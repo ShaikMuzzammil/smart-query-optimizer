@@ -1,0 +1,197 @@
+// ============================================================
+// Smart Query Optimizer — Database Schema
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Users & Auth ────────────────────────────────────────────
+model User {
+  id                    String               @id @default(cuid())
+  email                 String               @unique
+  name                  String?
+  passwordHash          String?
+  plan                  Plan                 @default(FREE)
+  stripeCustomerId      String?              @unique
+  crawlCreditsRemaining Int                  @default(1000)
+  apiKey                String?              @unique @default(cuid())
+  emailVerified         Boolean              @default(false)
+  avatarUrl             String?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+
+  indices               SearchIndex[]
+  searchLogs            SearchLog[]
+  subscription          BillingSubscription?
+  accounts              Account[]
+
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  provider          String
+  providerAccountId String
+  accessToken       String?
+  refreshToken      String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+// ─── Search Indices ───────────────────────────────────────────
+model SearchIndex {
+  id             String        @id @default(cuid())
+  userId         String
+  name           String
+  description    String?
+  domainAllowlist String[]
+  crawlingStatus CrawlStatus   @default(IDLE)
+  lastCrawledAt  DateTime?
+  totalPages     Int           @default(0)
+  indexSizeBytes BigInt        @default(0)
+  isPublic       Boolean       @default(false)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  crawlJobs      CrawlJob[]
+  pageMetadata   PageMetadata[]
+
+  @@map("search_indices")
+}
+
+model CrawlJob {
+  id          String     @id @default(cuid())
+  indexId     String
+  seedUrl     String
+  depth       Int        @default(3)
+  schedule    String?
+  status      JobStatus  @default(PENDING)
+  pagesFound  Int        @default(0)
+  errors      Int        @default(0)
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime   @default(now())
+
+  index       SearchIndex @relation(fields: [indexId], references: [id], onDelete: Cascade)
+
+  @@map("crawl_jobs")
+}
+
+model PageMetadata {
+  id           String      @id @default(cuid())
+  indexId      String
+  url          String
+  title        String?
+  snippet      String?
+  contentHash  String?
+  lastCrawled  DateTime    @default(now())
+  httpStatus   Int?
+  sizeBytes    Int?
+  inlinks      Int         @default(0)
+  pageRank     Float       @default(0.0)
+
+  index        SearchIndex @relation(fields: [indexId], references: [id], onDelete: Cascade)
+
+  @@unique([indexId, url])
+  @@index([url])
+  @@map("page_metadata")
+}
+
+// ─── Search Analytics ─────────────────────────────────────────
+model SearchLog {
+  id          String   @id @default(cuid())
+  userId      String?
+  query       String
+  filters     Json?
+  resultCount Int      @default(0)
+  latencyMs   Int?
+  timestamp   DateTime @default(now())
+
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([query])
+  @@index([timestamp])
+  @@map("search_logs")
+}
+
+// ─── Contact ──────────────────────────────────────────────────
+model ContactMessage {
+  id        String   @id @default(cuid())
+  name      String
+  email     String
+  subject   String?
+  message   String
+  read      Boolean  @default(false)
+  replied   Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@map("contact_messages")
+}
+
+// ─── Email Settings ───────────────────────────────────────────
+model EmailSetting {
+  key       String @id
+  value     String
+  encrypted Boolean @default(false)
+  updatedAt DateTime @updatedAt
+
+  @@map("email_settings")
+}
+
+// ─── Billing ──────────────────────────────────────────────────
+model BillingSubscription {
+  id              String           @id @default(cuid())
+  userId          String           @unique
+  stripeSubId     String?          @unique
+  plan            Plan             @default(FREE)
+  status          SubscriptionStatus @default(ACTIVE)
+  currentPeriodStart DateTime?
+  currentPeriodEnd   DateTime?
+  cancelAtPeriodEnd  Boolean        @default(false)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("billing_subscriptions")
+}
+
+// ─── Enums ────────────────────────────────────────────────────
+enum Plan {
+  FREE
+  PRO
+  ENTERPRISE
+}
+
+enum CrawlStatus {
+  IDLE
+  CRAWLING
+  PAUSED
+  COMPLETED
+  ERROR
+}
+
+enum JobStatus {
+  PENDING
+  RUNNING
+  PAUSED
+  COMPLETED
+  ERROR
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  TRIALING
+}
