@@ -1,17 +1,15 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { getAllFiles } from '../../../lib/indexer'
+import { NextResponse } from 'next/server'
+import { store } from '../../../lib/store'
 
 export async function GET() {
-  const files = getAllFiles()
-  return NextResponse.json({
-    indices: files.map(f => ({
-      id: f.id, name: f.name, status: f.status,
-      pages: Math.max(1, Math.round(f.wordCount / 500)),
-      size: f.sizeBytes > 1024*1024 ? (f.sizeBytes/1024/1024).toFixed(1)+' MB' : Math.round(f.sizeBytes/1024)+' KB',
-      wordCount: f.wordCount, uniqueWords: f.uniqueWords,
-      uploadedAt: f.uploadedAt, topKeywords: f.topKeywords.slice(0,3),
-      vocabRichness: f.vocabRichness, avgWordLength: f.avgWordLength,
-      queryAnalysis: f.queryAnalysis,
-    }))
-  })
+  const files = Array.from(store.queryFiles.values())
+    .sort((a,b)=>new Date(b.uploadedAt).getTime()-new Date(a.uploadedAt).getTime())
+  return NextResponse.json({ files: files.map(f=>({
+    id:f.id, fileName:f.fileName, uploadedAt:f.uploadedAt, status:f.status,
+    totalQueries:f.totalQueries, uniquePatterns:f.uniquePatterns,
+    sizeBytes:f.sizeBytes, topKeywords:f.topKeywords.slice(0,5),
+    slowPatterns:f.slowPatterns, duplicates:f.duplicates,
+    categories:f.categories, suggestions:f.suggestions,
+    avgLength:f.avgLength, minLength:f.minLength, maxLength:f.maxLength
+  })) })
 }

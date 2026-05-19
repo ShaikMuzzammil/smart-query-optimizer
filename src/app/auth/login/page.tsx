@@ -2,115 +2,65 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import Navbar from '../../../components/Navbar'
-import toast, { Toaster } from 'react-hot-toast'
 
-export default function LoginPage() {
+export default function Login() {
   const router = useRouter()
-  const [form, setForm] = useState({ email: '', password: '' })
+  const [form, setForm] = useState({email:'',password:''})
   const [loading, setLoading] = useState(false)
-  const [showPass, setShowPass] = useState(false)
-  const [errors, setErrors] = useState<Record<string,string>>({})
+  const [err, setErr] = useState('')
+  const [showP, setShowP] = useState(false)
 
-  const validate = () => {
-    const e: Record<string,string> = {}
-    if (!form.email.trim()) e.email = 'Email is required'
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) e.email = 'Invalid email'
-    if (!form.password) e.password = 'Password is required'
-    setErrors(e)
-    return !Object.keys(e).length
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!validate()) return
-    setLoading(true)
-    try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
-        credentials: 'include',
-      })
+  const handleSubmit = async(e: React.FormEvent)=>{
+    e.preventDefault(); setErr(''); setLoading(true)
+    try{
+      const res = await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(form),credentials:'include'})
       const data = await res.json()
-      if (res.ok && data.ok) {
-        // Store user in localStorage for client-side nav
-        localStorage.setItem('sq_user', JSON.stringify(data.user))
-        toast.success(`Welcome back, ${data.user.name}!`)
-        setTimeout(() => router.push('/dashboard'), 800)
-      } else {
-        toast.error(data.error || 'Invalid email or password')
-      }
-    } catch {
-      toast.error('Network error. Please try again.')
-    } finally {
-      setLoading(false)
-    }
+      if(res.ok&&data.ok){ localStorage.setItem('sq_user',JSON.stringify(data.user)); router.push('/dashboard') }
+      else setErr(data.error||'Login failed')
+    }catch{ setErr('Network error') }
+    setLoading(false)
   }
 
   return (
-    <>
-      <Toaster position="top-right" toastOptions={{ style:{background:'rgba(10,22,48,0.95)',color:'#E8F4FD',border:'1px solid rgba(0,198,255,0.3)',borderRadius:'12px'} }} />
-      <Navbar />
-      <main className="min-h-screen flex items-center justify-center px-6 pt-20 pb-10">
-        <div className="w-full max-w-md" style={{animation:'scaleIn 0.4s ease both'}}>
-          <div className="text-center mb-8">
-            <div className="inline-flex w-14 h-14 rounded-2xl bg-gradient-to-br from-[#00C6FF] to-[#7B2FBE] items-center justify-center mb-4 glow-primary">
-              <svg width="24" height="24" viewBox="0 0 16 16" fill="none"><circle cx="6.5" cy="6.5" r="4.5" stroke="white" strokeWidth="1.5"/><line x1="10" y1="10" x2="14" y2="14" stroke="white" strokeWidth="1.5" strokeLinecap="round"/></svg>
-            </div>
-            <h1 className="font-display font-bold text-3xl text-white mb-2">Welcome Back</h1>
-            <p className="text-[#7A9CC0]">Sign in to your SmartQuery account</p>
+    <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',padding:'80px 24px'}}>
+      <div style={{width:'100%',maxWidth:420,animation:'scaleIn 0.4s ease both'}}>
+        <div style={{textAlign:'center',marginBottom:32}}>
+          <div style={{width:56,height:56,borderRadius:16,background:'linear-gradient(135deg,#00C6FF,#7B2FBE)',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 16px',boxShadow:'0 0 30px rgba(0,198,255,0.3)'}}>
+            <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="white" strokeWidth={2}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35" strokeLinecap="round"/></svg>
           </div>
-
-          <div className="card p-8">
-            {/* Demo credentials notice */}
-            <div className="mb-5 p-3 rounded-xl bg-[rgba(0,198,255,0.06)] border border-[rgba(0,198,255,0.15)]">
-              <p className="text-[#7A9CC0] text-xs text-center">
-                💡 Demo: use any email + password (min 8 chars) to register first, then log in.
-              </p>
-            </div>
-
-            <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-              <div>
-                <label className="block text-[#7A9CC0] text-xs font-medium mb-1.5">Email Address</label>
-                <input type="email" value={form.email} onChange={e => setForm(p=>({...p,email:e.target.value}))}
-                  className={`input-field w-full px-4 py-3 rounded-xl text-sm ${errors.email?'border-[#FF1744]':''}`}
-                  placeholder="you@example.com" autoComplete="email" />
-                {errors.email && <p className="text-[#FF1744] text-xs mt-1">{errors.email}</p>}
-              </div>
-
-              <div>
-                <div className="flex justify-between mb-1.5">
-                  <label className="text-[#7A9CC0] text-xs font-medium">Password</label>
-                </div>
-                <div className="relative">
-                  <input type={showPass?'text':'password'} value={form.password} onChange={e => setForm(p=>({...p,password:e.target.value}))}
-                    className={`input-field w-full px-4 py-3 rounded-xl text-sm pr-10 ${errors.password?'border-[#FF1744]':''}`}
-                    placeholder="••••••••" autoComplete="current-password" />
-                  <button type="button" onClick={()=>setShowPass(!showPass)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#7A9CC0] hover:text-white transition-colors text-sm">
-                    {showPass?'🙈':'👁️'}
-                  </button>
-                </div>
-                {errors.password && <p className="text-[#FF1744] text-xs mt-1">{errors.password}</p>}
-              </div>
-
-              <button type="submit" disabled={loading}
-                className="btn-primary w-full py-3.5 rounded-xl text-white font-display font-semibold text-sm disabled:opacity-60">
-                <span className="flex items-center justify-center gap-2">
-                  {loading && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
-                  {loading ? 'Signing in…' : 'Sign In'}
-                </span>
-              </button>
-            </form>
-          </div>
-
-          <p className="text-center text-[#7A9CC0] text-sm mt-6">
-            Don't have an account?{' '}
-            <Link href="/auth/signup" className="text-[#00C6FF] font-semibold hover:text-white transition-colors">Create one free</Link>
-          </p>
+          <h1 style={{fontFamily:'Syne',fontWeight:700,fontSize:28,color:'white',marginBottom:8}}>Welcome Back</h1>
+          <p style={{color:'#7A9CC0'}}>Sign in to your SmartQuery account</p>
         </div>
-      </main>
-    </>
+        <div className="card" style={{padding:32}}>
+          {err&&<div style={{background:'rgba(255,23,68,0.1)',border:'1px solid rgba(255,23,68,0.3)',borderRadius:8,padding:'10px 14px',color:'#FF1744',fontSize:13,marginBottom:16}}>{err}</div>}
+          <div style={{background:'rgba(0,198,255,0.06)',border:'1px solid rgba(0,198,255,0.15)',borderRadius:8,padding:'10px 14px',color:'#7A9CC0',fontSize:12,marginBottom:20'}}>
+            💡 Sign up first if you don&apos;t have an account yet.
+          </div>
+          <form onSubmit={handleSubmit} style={{display:'flex',flexDirection:'column',gap:16}}>
+            <div>
+              <label style={{display:'block',color:'#7A9CC0',fontSize:12,fontWeight:500,marginBottom:6}}>Email</label>
+              <input type="email" value={form.email} onChange={e=>setForm(p=>({...p,email:e.target.value}))} className="inp" style={{width:'100%',padding:'12px 16px',borderRadius:10,fontSize:14}} placeholder="you@example.com" required />
+            </div>
+            <div>
+              <label style={{display:'block',color:'#7A9CC0',fontSize:12,fontWeight:500,marginBottom:6}}>Password</label>
+              <div style={{position:'relative'}}>
+                <input type={showP?'text':'password'} value={form.password} onChange={e=>setForm(p=>({...p,password:e.target.value}))} className="inp" style={{width:'100%',padding:'12px 40px 12px 16px',borderRadius:10,fontSize:14}} placeholder="••••••••" required />
+                <button type="button" onClick={()=>setShowP(!showP)} style={{position:'absolute',right:12,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',color:'#7A9CC0',fontSize:16}}>{showP?'🙈':'👁️'}</button>
+              </div>
+            </div>
+            <button type="submit" disabled={loading} className="btn-p" style={{padding:'13px',borderRadius:10,fontSize:14,marginTop:4,opacity:loading?0.7:1}}>
+              <span style={{display:'flex',alignItems:'center',gap:8,justifyContent:'center'}}>
+                {loading&&<div style={{width:14,height:14,border:'2px solid rgba(255,255,255,0.3)',borderTopColor:'white',borderRadius:'50%',animation:'spin 1s linear infinite'}}/>}
+                {loading?'Signing in…':'Sign In'}
+              </span>
+            </button>
+          </form>
+        </div>
+        <p style={{textAlign:'center',color:'#7A9CC0',fontSize:14,marginTop:20}}>
+          No account? <Link href="/auth/signup" style={{color:'#00C6FF',fontWeight:600,textDecoration:'none'}}>Create one free</Link>
+        </p>
+      </div>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    </div>
   )
 }

@@ -1,27 +1,20 @@
-import Navbar from '../../components/Navbar'
-import Footer from '../../components/Footer'
-export default function PrivacyPage() {
+import Link from 'next/link'
+export default function Privacy() {
   return (
-    <>
-      <Navbar />
-      <main className="min-h-screen pt-28 pb-20 px-6">
-        <div className="max-w-3xl mx-auto">
-          <h1 className="font-display font-extrabold text-5xl text-white mb-4">Privacy Policy</h1>
-          <p className="text-[#7A9CC0] mb-8">Last updated: January 2025</p>
-          {[
-            ['Information We Collect','We collect information you provide directly: name, email, and password on signup. We also collect usage data like search queries and crawl statistics to improve our service.'],
-            ['How We Use Your Information','We use your information to provide and improve SmartQuery, send notifications via Resend email, and respond to contact form submissions. Your data is never sold to third parties.'],
-            ['Data Security','Passwords are hashed using bcrypt (12 rounds). API keys are stored securely. JWT tokens are stored in httpOnly cookies — never in localStorage.'],
-            ['Contact','Questions about this policy? Reach us at privacy@smartquery.io or use our contact form.'],
-          ].map(([title, text]) => (
-            <div key={title as string} className="card p-6 mb-4">
-              <h2 className="font-display font-bold text-xl text-white mb-3">{title}</h2>
-              <p className="text-[#7A9CC0] leading-relaxed">{text}</p>
-            </div>
-          ))}
+    <div style={{minHeight:'100vh',padding:'100px 24px 60px',maxWidth:800,margin:'0 auto'}}>
+      <Link href="/" style={{color:'#00C6FF',textDecoration:'none',fontSize:14,display:'inline-flex',alignItems:'center',gap:6,marginBottom:32}}>← Back</Link>
+      <h1 style={{fontFamily:'Syne',fontWeight:800,fontSize:48,color:'white',marginBottom:8}}>Privacy Policy</h1>
+      <p style={{color:'#7A9CC0',marginBottom:40}}>Last updated: January 2025</p>
+      {[['Data We Collect','Name, email and password on signup. Uploaded file content stored in memory for the session only. No data is persisted beyond the server process lifetime.'],
+        ['How We Use It','To provide search and analysis features. To send email notifications via Resend (contact form, welcome email). We never sell or share your data.'],
+        ['Security','Passwords hashed with bcrypt (12 rounds). Sessions via JWT in httpOnly cookies. File content processed server-side only.'],
+        ['Contact','Questions? Email us at privacy@smartquery.io or use the contact form.']
+      ].map(([t,d])=>(
+        <div key={t} className="card" style={{padding:24,marginBottom:14}}>
+          <h2 style={{fontFamily:'Syne',fontWeight:700,fontSize:18,color:'white',marginBottom:8}}>{t}</h2>
+          <p style={{color:'#7A9CC0',lineHeight:1.7,fontSize:14}}>{d}</p>
         </div>
-      </main>
-      <Footer />
-    </>
+      ))}
+    </div>
   )
 }

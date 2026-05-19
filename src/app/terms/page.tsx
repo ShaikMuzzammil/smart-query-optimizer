@@ -1,27 +1,20 @@
-import Navbar from '../../components/Navbar'
-import Footer from '../../components/Footer'
-export default function TermsPage() {
+import Link from 'next/link'
+export default function Terms() {
   return (
-    <>
-      <Navbar />
-      <main className="min-h-screen pt-28 pb-20 px-6">
-        <div className="max-w-3xl mx-auto">
-          <h1 className="font-display font-extrabold text-5xl text-white mb-4">Terms of Service</h1>
-          <p className="text-[#7A9CC0] mb-8">Last updated: January 2025</p>
-          {[
-            ['Acceptance','By using SmartQuery Optimizer you agree to these terms. If you do not agree, please discontinue use.'],
-            ['Use of Service','SmartQuery is for lawful purposes only. You agree not to abuse the crawler, violate robots.txt on third-party sites, or use the service for illegal activities.'],
-            ['Accounts','You are responsible for your account credentials. Notify us immediately of any unauthorized access at security@smartquery.io.'],
-            ['Limitation of Liability','SmartQuery is provided "as is" without warranties. We are not liable for indirect, incidental, or consequential damages from your use of the service.'],
-          ].map(([title, text]) => (
-            <div key={title as string} className="card p-6 mb-4">
-              <h2 className="font-display font-bold text-xl text-white mb-3">{title}</h2>
-              <p className="text-[#7A9CC0] leading-relaxed">{text}</p>
-            </div>
-          ))}
+    <div style={{minHeight:'100vh',padding:'100px 24px 60px',maxWidth:800,margin:'0 auto'}}>
+      <Link href="/" style={{color:'#00C6FF',textDecoration:'none',fontSize:14,display:'inline-flex',alignItems:'center',gap:6,marginBottom:32}}>← Back</Link>
+      <h1 style={{fontFamily:'Syne',fontWeight:800,fontSize:48,color:'white',marginBottom:8}}>Terms of Service</h1>
+      <p style={{color:'#7A9CC0',marginBottom:40}}>Last updated: January 2025</p>
+      {[['Acceptance','By using SmartQuery Optimizer you agree to these terms.'],
+        ['Use','For lawful purposes only. Do not upload malicious content or attempt to abuse the system.'],
+        ['Accounts','You are responsible for your credentials. Notify us of any unauthorized access.'],
+        ['Limitation','SmartQuery is provided "as is" without warranties of any kind.']
+      ].map(([t,d])=>(
+        <div key={t} className="card" style={{padding:24,marginBottom:14}}>
+          <h2 style={{fontFamily:'Syne',fontWeight:700,fontSize:18,color:'white',marginBottom:8}}>{t}</h2>
+          <p style={{color:'#7A9CC0',lineHeight:1.7,fontSize:14}}>{d}</p>
         </div>
-      </main>
-      <Footer />
-    </>
+      ))}
+    </div>
   )
 }

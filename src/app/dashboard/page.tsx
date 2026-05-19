@@ -1,714 +1,849 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import toast, { Toaster } from 'react-hot-toast'
 
-const NAV = [
-  { id:'overview',  label:'Overview',  icon:'📊' },
-  { id:'upload',    label:'Upload',    icon:'📤' },
-  { id:'indices',   label:'My Files',  icon:'📁' },
-  { id:'search',    label:'Search',    icon:'🔍' },
-  { id:'analytics', label:'Analytics', icon:'📈' },
-  { id:'settings',  label:'Settings',  icon:'⚙️' },
-]
+const IMPACT_COLOR: Record<string,string> = {HIGH:'#FF1744',MEDIUM:'#FFD600',LOW:'#00E676'}
+const IMPACT_BG: Record<string,string> = {HIGH:'rgba(255,23,68,0.1)',MEDIUM:'rgba(255,214,0,0.1)',LOW:'rgba(0,230,118,0.1)'}
+const NAV = [{id:'overview',l:'Overview',icon:'📊'},{id:'upload',l:'Upload',icon:'📤'},{id:'files',l:'My Files',icon:'📁'},{id:'search',l:'Search',icon:'🔍'},{id:'analytics',l:'Analytics',icon:'📈'},{id:'settings',l:'Settings',icon:'⚙️'}]
 
-const IMPACT_COLOR: Record<string,string> = { HIGH:'#FF1744', MEDIUM:'#FFD600', LOW:'#00E676' }
-const STATUS_COLOR: Record<string,string> = { COMPLETED:'#00E676', INDEXING:'#00C6FF', ERROR:'#FF1744', IDLE:'#7A9CC0' }
+function fmt(n: number) { return n>=1000000?(n/1000000).toFixed(1)+'M':n>=1000?(n/1000).toFixed(1)+'k':n.toString() }
+function fmtDate(iso: string) { 
+  const d = new Date(iso)
+  const diff = Date.now()-d.getTime()
+  if(diff<60000) return 'just now'
+  if(diff<3600000) return Math.round(diff/60000)+'m ago'
+  if(diff<86400000) return Math.round(diff/3600000)+'h ago'
+  return d.toLocaleDateString('en-IN',{day:'2-digit',month:'short'})
+}
 
-function fmt(n: number) { return n >= 1000 ? (n/1000).toFixed(1)+'k' : n.toString() }
-function fmtDate(iso: string) { return new Date(iso).toLocaleDateString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) }
-
-export default function DashboardPage() {
+export default function Dashboard() {
   const router = useRouter()
   const [tab, setTab] = useState('overview')
   const [user, setUser] = useState<any>(null)
   const [collapsed, setCollapsed] = useState(false)
   const [files, setFiles] = useState<any[]>([])
+  const [analytics, setAnalytics] = useState<any>(null)
   const [uploading, setUploading] = useState(false)
   const [dragOver, setDragOver] = useState(false)
-  const [expandedFile, setExpandedFile] = useState<any>(null)
+  const [expanded, setExpanded] = useState<any>(null)
   const [searchQ, setSearchQ] = useState('')
-  const [searchResults, setSearchResults] = useState<any[]>([])
+  const [searchRes, setSearchRes] = useState<any[]>([])
   const [searching, setSearching] = useState(false)
   const [searchLatency, setSearchLatency] = useState(0)
-  const [settings, setSettings] = useState({ resendApiKey:'', adminEmail:'', fromName:'SmartQuery Optimizer', crawlAlerts:true, weeklyDigest:false, bm25K1:'1.5', bm25B:'0.75', alpha:'0.7' })
-  const [settingsSaved, setSettingsSaved] = useState(false)
-  const [collapsed2, setCollapsed2] = useState(false)
+  const [toast, setToast] = useState<{msg:string;type:'ok'|'err'}|null>(null)
+  const [settings, setSettings] = useState({resendKey:'',adminEmail:'',fromName:'SmartQuery Optimizer',bm25K1:'1.5',bm25B:'0.75',alpha:'0.7',crawlAlerts:true,weeklyDigest:false})
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => {
-    const stored = localStorage.getItem('sq_user')
-    if (!stored) { router.push('/auth/login'); return }
-    setUser(JSON.parse(stored))
-    loadFiles()
-  }, [])
+  const showToast = (msg: string, type: 'ok'|'err'='ok') => {
+    setToast({msg,type})
+    setTimeout(()=>setToast(null),3500)
+  }
 
-  const loadFiles = async () => {
-    try {
+  const loadFiles = useCallback(async()=>{
+    try{
       const res = await fetch('/api/indices')
       const data = await res.json()
-      if (data.indices) setFiles(data.indices)
-    } catch {}
-  }
+      if(data.files) setFiles(data.files)
+    }catch{}
+  },[])
 
-  const handleUpload = async (file: File) => {
-    if (!file.name.endsWith('.txt')) { toast.error('Only .txt files supported'); return }
-    if (file.size > 5*1024*1024) { toast.error('Max file size is 5MB'); return }
-    setUploading(true)
-    const fd = new FormData()
-    fd.append('file', file)
-    try {
-      const res = await fetch('/api/upload', { method:'POST', body:fd })
+  const loadAnalytics = useCallback(async()=>{
+    try{
+      const res = await fetch('/api/analytics')
       const data = await res.json()
-      if (res.ok && data.ok) {
-        toast.success(`"${data.file.name}" indexed — ${fmt(data.file.wordCount)} words`)
-        setFiles(prev => [data.file, ...prev])
-        setTab('indices')
-      } else toast.error(data.error || 'Upload failed')
-    } catch { toast.error('Upload failed') }
-    finally { setUploading(false) }
+      setAnalytics(data)
+    }catch{}
+  },[])
+
+  useEffect(()=>{
+    const stored = localStorage.getItem('sq_user')
+    if(!stored){router.push('/auth/login');return}
+    setUser(JSON.parse(stored))
+    loadFiles()
+    loadAnalytics()
+  },[])
+
+  const handleUpload = async(file: File)=>{
+    if(!file.name.endsWith('.txt')){showToast('Only .txt files supported','err');return}
+    if(file.size>10*1024*1024){showToast('Max file size is 10MB','err');return}
+    setUploading(true)
+    const fd = new FormData(); fd.append('file',file)
+    try{
+      const res = await fetch('/api/upload',{method:'POST',body:fd})
+      const data = await res.json()
+      if(res.ok&&data.ok){
+        showToast(`"${data.file.fileName}" indexed — ${fmt(data.file.totalQueries)} queries`)
+        await loadFiles(); await loadAnalytics()
+        setTab('files')
+      } else showToast(data.error||'Upload failed','err')
+    }catch{ showToast('Upload failed','err') }
+    setUploading(false)
   }
 
-  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0]
-    if (f) handleUpload(f)
-    e.target.value = ''
+  const handleDelete = async(id: string, name: string)=>{
+    try{
+      const res = await fetch(`/api/indices/${id}`,{method:'DELETE'})
+      if(res.ok){
+        setFiles(p=>p.filter(f=>f.id!==id))
+        if(expanded?.id===id) setExpanded(null)
+        showToast(`"${name}" deleted`)
+        loadAnalytics()
+      } else showToast('Delete failed','err')
+    }catch{ showToast('Delete failed','err') }
   }
 
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault(); setDragOver(false)
-    const f = e.dataTransfer.files[0]
-    if (f) handleUpload(f)
-  }
-
-  const handleDelete = async (id: string, name: string) => {
-    try {
-      const res = await fetch(`/api/indices/${id}`, { method:'DELETE' })
-      if (res.ok) {
-        setFiles(prev => prev.filter(f => f.id !== id))
-        if (expandedFile?.id === id) setExpandedFile(null)
-        toast.success(`"${name}" deleted`)
-      } else toast.error('Delete failed')
-    } catch { toast.error('Delete failed') }
-  }
-
-  const handleSearch = async (e: React.FormEvent) => {
+  const handleSearch = async(e: React.FormEvent)=>{
     e.preventDefault()
-    if (!searchQ.trim()) return
-    setSearching(true); setSearchResults([])
-    try {
+    if(!searchQ.trim()) return
+    setSearching(true); setSearchRes([])
+    try{
       const res = await fetch(`/api/search?q=${encodeURIComponent(searchQ)}`)
       const data = await res.json()
-      setSearchResults(data.results || [])
-      setSearchLatency(data.latencyMs || 0)
-      if (!data.results?.length) toast('No results found', { icon:'🔍' })
-    } catch { toast.error('Search failed') }
-    finally { setSearching(false) }
+      setSearchRes(data.results||[])
+      setSearchLatency(data.latencyMs||0)
+      if(!data.results?.length) showToast('No results found','err')
+    }catch{ showToast('Search failed','err') }
+    setSearching(false)
   }
 
-  const handleViewDetail = async (file: any) => {
-    try {
-      const res = await fetch(`/api/indices/${file.id}`)
+  const handleViewFull = async(f: any)=>{
+    try{
+      const res = await fetch(`/api/indices/${f.id}`)
       const data = await res.json()
-      setExpandedFile(data.file || file)
-    } catch { setExpandedFile(file) }
+      setExpanded(data.file||f)
+    }catch{ setExpanded(f) }
   }
 
-  const handleSaveSettings = async () => {
-    await fetch('/api/admin/settings', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ emailSettings: settings }) })
-    setSettingsSaved(true)
-    toast.success('Settings saved!')
-    setTimeout(() => setSettingsSaved(false), 3000)
+  const handleSaveSettings = async()=>{
+    await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(settings)})
+    showToast('Settings saved!')
   }
 
-  const handleLogout = async () => {
-    await fetch('/api/auth/logout', { method:'POST' })
+  const handleLogout = async()=>{
+    await fetch('/api/auth/logout',{method:'POST'})
     localStorage.removeItem('sq_user')
-    toast.success('Signed out')
-    setTimeout(() => router.push('/'), 700)
+    router.push('/')
   }
 
-  const totalWords = files.reduce((s,f) => s+(f.wordCount||0), 0)
-  const totalFiles = files.length
-  const avgVocab = files.length ? Math.round(files.reduce((s,f) => s+(f.vocabRichness||0),0)/files.length) : 0
-  const indexSize = new Set(files.flatMap(f => (f.topKeywords||[]).map((k:any) => k.word))).size
-
-  const highlightText = (text: string, terms: string[]) => {
+  const highlight = (text: string, q: string)=>{
+    const terms = q.toLowerCase().split(/\s+/).filter(w=>w.length>2)
     let t = text
-    terms.forEach(term => { t = t.replace(new RegExp(`(${term})`, 'gi'), '<mark>$1</mark>') })
+    terms.forEach(term=>{ t=t.replace(new RegExp(`(${term.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')})`, 'gi'),'<mark>$1</mark>') })
     return t
   }
 
+  const totalWords = files.reduce((s,f)=>s+(f.totalQueries||0),0)
+  const totalIssues = files.flatMap(f=>f.slowPatterns||[]).filter(p=>p.impact==='HIGH').length
+
+  const S = {
+    sidebar:{width:collapsed?64:228,flexShrink:0,height:'100vh',position:'sticky' as const,top:0,background:'rgba(5,11,24,0.92)',backdropFilter:'blur(20px)',borderRight:'1px solid rgba(0,198,255,0.1)',display:'flex',flexDirection:'column' as const,transition:'width 0.3s ease',overflow:'hidden'},
+    main:{flex:1,display:'flex',flexDirection:'column' as const,overflow:'hidden',minWidth:0},
+    topbar:{height:64,display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 24px',borderBottom:'1px solid rgba(0,198,255,0.1)',background:'rgba(5,11,24,0.85)',backdropFilter:'blur(20px)',flexShrink:0,position:'sticky' as const,top:0,zIndex:20},
+    content:{flex:1,overflowY:'auto' as const,padding:24},
+  }
+
   return (
-    <div className="flex h-screen overflow-hidden bg-[#050B18]">
-      <Toaster position="top-right" toastOptions={{ style:{background:'rgba(10,22,48,0.95)',color:'#E8F4FD',border:'1px solid rgba(0,198,255,0.3)',borderRadius:'12px',fontFamily:'Outfit,sans-serif'} }} />
+    <div style={{display:'flex',height:'100vh',overflow:'hidden',background:'#050B18'}}>
+      {/* Toast */}
+      {toast&&(
+        <div style={{position:'fixed',top:20,right:20,zIndex:9999,padding:'12px 20px',borderRadius:10,background:toast.type==='ok'?'rgba(0,10,25,0.95)':'rgba(20,0,5,0.95)',border:`1px solid ${toast.type==='ok'?'rgba(0,198,255,0.3)':'rgba(255,23,68,0.3)'}`,color:toast.type==='ok'?'#00E676':'#FF1744',fontFamily:'Outfit',fontSize:14,animation:'slideUp 0.3s ease both',boxShadow:'0 8px 30px rgba(0,0,0,0.4)'}}>
+          {toast.type==='ok'?'✓':'✗'} {toast.msg}
+        </div>
+      )}
 
       {/* Sidebar */}
-      <aside className={`${collapsed?'w-16':'w-60'} transition-all duration-300 flex flex-col shrink-0 border-r border-[rgba(0,198,255,0.1)] bg-[rgba(5,11,24,0.92)] backdrop-blur-xl`}>
-        <div className={`h-16 flex items-center ${collapsed?'justify-center px-2':'px-5 gap-3'} border-b border-[rgba(0,198,255,0.1)]`}>
-          <Link href="/" className="flex items-center gap-2 min-w-0">
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#00C6FF] to-[#7B2FBE] flex items-center justify-center shrink-0">
-              <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><circle cx="6.5" cy="6.5" r="4.5" stroke="white" strokeWidth="1.5"/><line x1="10" y1="10" x2="14" y2="14" stroke="white" strokeWidth="1.5" strokeLinecap="round"/></svg>
+      <aside style={S.sidebar}>
+        <div style={{height:64,display:'flex',alignItems:'center',padding:collapsed?'0 16px':'0 16px',justifyContent:collapsed?'center':'flex-start',gap:8,borderBottom:'1px solid rgba(0,198,255,0.1)',flexShrink:0}}>
+          <Link href="/" style={{display:'flex',alignItems:'center',gap:8,textDecoration:'none',minWidth:0}}>
+            <div style={{width:28,height:28,borderRadius:7,background:'linear-gradient(135deg,#00C6FF,#7B2FBE)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+              <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="white" strokeWidth={2}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35" strokeLinecap="round"/></svg>
             </div>
-            {!collapsed && <span className="font-display font-bold text-white text-sm truncate">SmartQuery</span>}
+            {!collapsed&&<span style={{fontFamily:'Syne',fontWeight:700,color:'white',fontSize:14,whiteSpace:'nowrap'}}>SmartQuery</span>}
           </Link>
-          {!collapsed && <button onClick={()=>setCollapsed(true)} className="ml-auto text-[#7A9CC0] hover:text-white p-1">‹</button>}
-          {collapsed && <button onClick={()=>setCollapsed(false)} className="absolute left-14 top-5 w-5 h-5 glass rounded text-[#7A9CC0] text-xs flex items-center justify-center">›</button>}
+          {!collapsed&&<button onClick={()=>setCollapsed(true)} style={{marginLeft:'auto',background:'none',border:'none',color:'#7A9CC0',fontSize:18,lineHeight:1}}>‹</button>}
         </div>
+        {collapsed&&<button onClick={()=>setCollapsed(false)} style={{background:'none',border:'1px solid rgba(0,198,255,0.2)',color:'#7A9CC0',margin:'8px auto',width:28,height:20,borderRadius:4,display:'flex',alignItems:'center',justifyContent:'center',fontSize:12}}>›</button>}
 
-        <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
-          {NAV.map(item => (
+        <nav style={{flex:1,padding:'8px',overflowY:'auto',display:'flex',flexDirection:'column',gap:2}}>
+          {NAV.map(item=>(
             <button key={item.id} onClick={()=>setTab(item.id)}
-              className={`sidebar-link w-full ${tab===item.id?'active':''} ${collapsed?'justify-center':''}`}
-              title={collapsed?item.label:undefined}>
-              <span className="text-base shrink-0">{item.icon}</span>
-              {!collapsed && <span className="text-sm">{item.label}</span>}
+              style={{display:'flex',alignItems:'center',gap:9,padding:collapsed?'10px':'10px 12px',borderRadius:9,border:'none',background:tab===item.id?'rgba(0,198,255,0.12)':'transparent',color:tab===item.id?'#00C6FF':'#7A9CC0',borderLeft:tab===item.id?'2px solid #00C6FF':'2px solid transparent',fontFamily:'Outfit',fontSize:13,fontWeight:500,justifyContent:collapsed?'center':'flex-start',transition:'all 0.2s',cursor:'none',width:'100%'}}
+              title={collapsed?item.l:undefined}>
+              <span style={{fontSize:16,flexShrink:0}}>{item.icon}</span>
+              {!collapsed&&<span>{item.l}</span>}
             </button>
           ))}
         </nav>
 
-        <div className="p-3 border-t border-[rgba(0,198,255,0.1)]">
-          {!collapsed && (
-            <div className="card p-3 mb-2">
-              <p className="text-[#7A9CC0] text-xs mb-1">Files Indexed</p>
-              <p className="font-display font-bold text-white text-lg">{totalFiles}</p>
-              <p className="text-[#7A9CC0] text-xs">{fmt(totalWords)} words total</p>
+        <div style={{padding:'8px',borderTop:'1px solid rgba(0,198,255,0.1)',flexShrink:0}}>
+          {!collapsed&&(
+            <div className="card" style={{padding:'12px',marginBottom:8}}>
+              <p style={{color:'#7A9CC0',fontSize:11,marginBottom:4}}>Session Files</p>
+              <p style={{fontFamily:'Syne',fontWeight:700,color:'white',fontSize:18}}>{files.length}</p>
+              <p style={{color:'#7A9CC0',fontSize:11}}>{fmt(totalWords)} queries total</p>
             </div>
           )}
-          <button onClick={handleLogout} className={`sidebar-link w-full text-[#FF6B35] hover:text-[#FF1744] hover:bg-[rgba(255,23,68,0.08)] ${collapsed?'justify-center':''}`}>
-            <span className="text-base">🚪</span>
-            {!collapsed && <span className="text-sm">Sign Out</span>}
+          <button onClick={handleLogout} style={{display:'flex',alignItems:'center',gap:9,padding:collapsed?'10px':'10px 12px',borderRadius:9,border:'none',background:'transparent',color:'#FF6B35',fontFamily:'Outfit',fontSize:13,fontWeight:500,cursor:'none',width:'100%',justifyContent:collapsed?'center':'flex-start',transition:'all 0.2s'}}>
+            <span style={{fontSize:16}}>🚪</span>
+            {!collapsed&&<span>Sign Out</span>}
           </button>
         </div>
       </aside>
 
       {/* Main */}
-      <main className="flex-1 flex flex-col overflow-hidden">
+      <main style={S.main}>
         {/* Topbar */}
-        <div className="h-16 flex items-center justify-between px-6 border-b border-[rgba(0,198,255,0.1)] bg-[rgba(5,11,24,0.85)] backdrop-blur-xl shrink-0 sticky top-0 z-20">
+        <div style={S.topbar}>
           <div>
-            <h1 className="font-display font-bold text-white text-lg capitalize">{NAV.find(n=>n.id===tab)?.label}</h1>
-            <p className="text-[#7A9CC0] text-xs">Welcome back{user?.name?`, ${user.name}`:''} 👋</p>
+            <h1 style={{fontFamily:'Syne',fontWeight:700,color:'white',fontSize:18}}>{NAV.find(n=>n.id===tab)?.l}</h1>
+            <p style={{color:'#7A9CC0',fontSize:12}}>Welcome back{user?.name?`, ${user.name}`:''} 👋</p>
           </div>
-          <div className="flex items-center gap-3">
-            <button onClick={()=>setTab('upload')} className="btn-primary px-4 py-2 rounded-xl text-sm text-white font-semibold">
-              <span>+ Upload File</span>
-            </button>
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#00C6FF] to-[#7B2FBE] flex items-center justify-center text-white text-xs font-bold font-display">
+          <div style={{display:'flex',alignItems:'center',gap:12}}>
+            <button onClick={()=>setTab('upload')} className="btn-p" style={{padding:'8px 18px',borderRadius:10,fontSize:13}}><span>+ Upload File</span></button>
+            <div style={{width:34,height:34,borderRadius:'50%',background:'linear-gradient(135deg,#00C6FF,#7B2FBE)',display:'flex',alignItems:'center',justifyContent:'center',color:'white',fontFamily:'Syne',fontWeight:700,fontSize:14}}>
               {user?.name?.[0]?.toUpperCase()||'U'}
             </div>
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6">
-          <div className="max-w-5xl mx-auto">
+        <div style={S.content}>
+          <div style={{maxWidth:1100}}>
 
-            {/* ── OVERVIEW ── */}
-            {tab==='overview' && (
-              <div className="space-y-6" style={{animation:'pageIn 0.3s ease both'}}>
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                  {[
-                    { label:'Files Indexed', value:totalFiles.toString(), icon:'📁', sub:'total uploads', color:'#00C6FF' },
-                    { label:'Words Indexed', value:fmt(totalWords), icon:'📝', sub:'across all files', color:'#7B2FBE' },
-                    { label:'Vocab Richness', value:avgVocab+'%', icon:'🎯', sub:'avg uniqueness', color:'#00E676' },
-                    { label:'Index Terms', value:fmt(indexSize), icon:'🔑', sub:'unique terms', color:'#FFD600' },
-                  ].map(s => (
-                    <div key={s.label} className="card p-5">
-                      <div className="flex items-center gap-2 mb-3">
-                        <span className="text-xl">{s.icon}</span>
-                        <span className="text-[#7A9CC0] text-xs">{s.label}</span>
-                      </div>
-                      <p className="font-display font-bold text-2xl mb-1" style={{color:s.color}}>{s.value}</p>
-                      <p className="text-[#7A9CC0] text-xs">{s.sub}</p>
+          {/* ── OVERVIEW ── */}
+          {tab==='overview'&&(
+            <div style={{animation:'pageIn 0.3s ease both'}}>
+              {/* KPI Cards */}
+              <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:16,marginBottom:24}}>
+                {[
+                  {l:'Total Queries',v:fmt(analytics?.totalQueries||0),sub:'across all files',icon:'🔍',c:'#00C6FF'},
+                  {l:'Files Indexed',v:(analytics?.totalFiles||0).toString(),sub:'uploaded this session',icon:'📁',c:'#7B2FBE'},
+                  {l:'High-Impact Issues',v:(analytics?.slowCount||0).toString(),sub:'patterns detected',icon:'⚠️',c:'#FF1744'},
+                  {l:'Index Terms',v:fmt(analytics?.indexTerms||0),sub:'unique tokens',icon:'🔑',c:'#00E676'},
+                ].map(s=>(
+                  <div key={s.l} className="card" style={{padding:20}}>
+                    <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:10}}>
+                      <span style={{fontSize:20}}>{s.icon}</span>
+                      <span style={{color:'#7A9CC0',fontSize:12}}>{s.l}</span>
                     </div>
-                  ))}
-                </div>
-
-                {files.length === 0 ? (
-                  <div className="card p-12 text-center">
-                    <div className="text-6xl mb-4">📤</div>
-                    <h3 className="font-display font-bold text-xl text-white mb-2">No files indexed yet</h3>
-                    <p className="text-[#7A9CC0] mb-6">Upload a .txt file to build your search index and get query analysis.</p>
-                    <button onClick={()=>setTab('upload')} className="btn-primary px-6 py-3 rounded-xl text-white font-semibold"><span>Upload Your First File</span></button>
-                  </div>
-                ) : (
-                  <div>
-                    <div className="flex items-center justify-between mb-4">
-                      <h2 className="font-display font-bold text-white">Recent Files</h2>
-                      <button onClick={()=>setTab('indices')} className="text-[#00C6FF] text-sm hover:text-white transition-colors">View all →</button>
-                    </div>
-                    <div className="space-y-3">
-                      {files.slice(0,3).map(f => (
-                        <div key={f.id} className="card p-4 flex items-center gap-4">
-                          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#00C6FF]/20 to-[#7B2FBE]/20 border border-[rgba(0,198,255,0.2)] flex items-center justify-center text-lg shrink-0">📄</div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <p className="font-display font-semibold text-white text-sm truncate">{f.name}</p>
-                              <span className="badge text-xs shrink-0" style={{background:`${STATUS_COLOR[f.status]}20`,border:`1px solid ${STATUS_COLOR[f.status]}40`,color:STATUS_COLOR[f.status]}}>{f.status}</span>
-                            </div>
-                            <p className="text-[#7A9CC0] text-xs">{fmt(f.wordCount)} words · {fmt(f.uniqueWords)} unique · {f.size}</p>
-                          </div>
-                          <div className="flex gap-2 shrink-0">
-                            <button onClick={()=>{handleViewDetail(f);setTab('indices')}} className="btn-outline px-3 py-1.5 rounded-lg text-xs font-semibold">View</button>
-                            <button onClick={()=>handleDelete(f.id,f.name)} className="px-3 py-1.5 rounded-lg text-xs border border-[rgba(255,23,68,0.3)] text-[#FF1744] hover:bg-[rgba(255,23,68,0.08)] transition-all">Delete</button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {files.length > 0 && (
-                  <div className="card p-6">
-                    <h3 className="font-display font-bold text-white mb-4">Top Keywords Across All Files</h3>
-                    <div className="flex flex-wrap gap-2">
-                      {Array.from(new Map(files.flatMap(f => f.topKeywords||[]).map((k:any) => [k.word,k])).values()).slice(0,20).map((k:any) => (
-                        <button key={k.word} onClick={()=>{setSearchQ(k.word);setTab('search')}}
-                          className="badge badge-primary hover:bg-[rgba(0,198,255,0.2)] transition-all text-sm px-3 py-1.5">
-                          {k.word} <span className="ml-1 opacity-60">×{k.freq}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* ── UPLOAD ── */}
-            {tab==='upload' && (
-              <div className="space-y-6" style={{animation:'pageIn 0.3s ease both'}}>
-                <div
-                  onDragOver={e=>{e.preventDefault();setDragOver(true)}}
-                  onDragLeave={()=>setDragOver(false)}
-                  onDrop={handleDrop}
-                  className={`card p-12 text-center border-2 border-dashed transition-all duration-300 ${dragOver?'border-[#00C6FF] bg-[rgba(0,198,255,0.05)]':'border-[rgba(0,198,255,0.2)]'}`}>
-                  <div className="text-6xl mb-4">{uploading?'⏳':'📤'}</div>
-                  <h2 className="font-display font-bold text-2xl text-white mb-2">{uploading?'Indexing your file…':'Upload a .txt File'}</h2>
-                  <p className="text-[#7A9CC0] mb-6">{uploading?'Building inverted index and analyzing queries…':'Drag & drop or click to upload. Max 5MB. Supports SQL logs, search queries, or any text.'}</p>
-                  {!uploading && (
-                    <label className="btn-primary px-8 py-3 rounded-xl text-white font-semibold inline-flex items-center gap-2">
-                      <span>Choose File</span>
-                      <input type="file" accept=".txt" onChange={handleFileInput} className="hidden" />
-                    </label>
-                  )}
-                  {uploading && <div className="flex justify-center"><div className="w-8 h-8 border-2 border-[rgba(0,198,255,0.3)] border-t-[#00C6FF] rounded-full animate-spin"/></div>}
-                </div>
-
-                <div className="grid md:grid-cols-3 gap-4">
-                  {[
-                    { icon:'🔍', title:'Inverted Index', desc:'BM25-ranked full-text search across all uploaded files with term frequency scoring.' },
-                    { icon:'📊', title:'Query Analyzer', desc:'Detects slow SQL patterns, missing indexes, LIKE wildcards, N+1 queries, and more.' },
-                    { icon:'🎯', title:'Keyword Extraction', desc:'Top 10 keywords, vocabulary richness, avg word length, unique term count.' },
-                  ].map(f => (
-                    <div key={f.title} className="card p-5">
-                      <div className="text-3xl mb-3">{f.icon}</div>
-                      <h3 className="font-display font-bold text-white mb-2">{f.title}</h3>
-                      <p className="text-[#7A9CC0] text-sm leading-relaxed">{f.desc}</p>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="card p-6">
-                  <h3 className="font-display font-bold text-white mb-3">Example File Formats</h3>
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <div className="terminal rounded-xl">
-                      <div className="terminal-header"><div className="terminal-dot bg-red-500"/><div className="terminal-dot bg-yellow-400"/><div className="terminal-dot bg-green-500"/><span className="text-[#7A9CC0] text-xs ml-2">sql_queries.txt</span></div>
-                      <pre className="p-4 text-xs text-[#00E676] leading-relaxed">{`SELECT * FROM users
-SELECT id FROM orders WHERE user_id = 123
-SELECT * FROM products LIKE '%phone%'
-UPDATE users SET name = 'John' WHERE id = 1
-SELECT * FROM logs ORDER BY created_at`}</pre>
-                    </div>
-                    <div className="terminal rounded-xl">
-                      <div className="terminal-header"><div className="terminal-dot bg-red-500"/><div className="terminal-dot bg-yellow-400"/><div className="terminal-dot bg-green-500"/><span className="text-[#7A9CC0] text-xs ml-2">search_log.txt</span></div>
-                      <pre className="p-4 text-xs text-[#00E676] leading-relaxed">{`machine learning tutorials
-how to optimize SQL queries
-best distributed systems books
-the a is are in the
-next.js vs remix performance`}</pre>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* ── MY FILES ── */}
-            {tab==='indices' && (
-              <div className="space-y-4" style={{animation:'pageIn 0.3s ease both'}}>
-                {files.length === 0 ? (
-                  <div className="card p-12 text-center">
-                    <div className="text-5xl mb-4">📁</div>
-                    <h3 className="font-display font-bold text-xl text-white mb-2">No files yet</h3>
-                    <p className="text-[#7A9CC0] mb-6">Upload a .txt file to get started.</p>
-                    <button onClick={()=>setTab('upload')} className="btn-primary px-6 py-3 rounded-xl text-white font-semibold"><span>Upload File</span></button>
-                  </div>
-                ) : files.map(f => (
-                  <div key={f.id} className="card p-6">
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#00C6FF]/20 to-[#7B2FBE]/20 border border-[rgba(0,198,255,0.2)] flex items-center justify-center text-xl">📄</div>
-                        <div>
-                          <h3 className="font-display font-bold text-white">{f.name}</h3>
-                          <p className="text-[#7A9CC0] text-xs">{fmtDate(f.uploadedAt)}</p>
-                        </div>
-                      </div>
-                      <span className="badge text-xs" style={{background:`${STATUS_COLOR[f.status]}20`,border:`1px solid ${STATUS_COLOR[f.status]}40`,color:STATUS_COLOR[f.status]}}>{f.status}</span>
-                    </div>
-
-                    <div className="grid grid-cols-3 md:grid-cols-6 gap-3 mb-4">
-                      {[['Words',fmt(f.wordCount)],['Unique',fmt(f.uniqueWords)],['Size',f.size],['Pages',f.pages],['Vocab',f.vocabRichness+'%'],['Avg Len',f.avgWordLength]].map(([l,v])=>(
-                        <div key={l} className="text-center p-2 rounded-xl bg-[rgba(0,198,255,0.04)] border border-[rgba(0,198,255,0.06)]">
-                          <p className="text-[#7A9CC0] text-xs mb-0.5">{l}</p>
-                          <p className="font-display font-bold text-white text-sm">{v}</p>
-                        </div>
-                      ))}
-                    </div>
-
-                    {f.topKeywords?.length > 0 && (
-                      <div className="mb-4">
-                        <p className="text-[#7A9CC0] text-xs mb-2">Top Keywords</p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {f.topKeywords.map((k:any) => (
-                            <span key={k.word} className="badge badge-primary text-xs">{k.word} <span className="opacity-60 ml-1">×{k.freq}</span></span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {f.queryAnalysis && (
-                      <div className="mb-4 p-4 rounded-xl bg-[rgba(0,198,255,0.04)] border border-[rgba(0,198,255,0.08)]">
-                        <p className="text-[#7A9CC0] text-xs font-semibold mb-2 uppercase tracking-wider">Query Analysis</p>
-                        <div className="grid grid-cols-3 gap-3 mb-3">
-                          {[['Total Queries',f.queryAnalysis.totalQueries],['Unique Patterns',f.queryAnalysis.uniquePatterns],['Avg Length',f.queryAnalysis.avgLength+'ch']].map(([l,v])=>(
-                            <div key={l}><p className="text-[#7A9CC0] text-xs">{l}</p><p className="text-white font-semibold font-display">{v}</p></div>
-                          ))}
-                        </div>
-                        {f.queryAnalysis.slowPatterns?.slice(0,3).map((p:any,i:number) => (
-                          <div key={i} className="flex items-start gap-3 p-3 rounded-lg bg-[rgba(0,0,0,0.3)] mb-2">
-                            <span className="badge text-xs shrink-0" style={{background:`${IMPACT_COLOR[p.impact]}20`,border:`1px solid ${IMPACT_COLOR[p.impact]}40`,color:IMPACT_COLOR[p.impact]}}>{p.impact}</span>
-                            <div className="min-w-0">
-                              <p className="text-white text-sm font-semibold">{p.pattern} <span className="text-[#7A9CC0] font-normal">×{p.count}</span></p>
-                              <p className="text-[#7A9CC0] text-xs">{p.suggestion}</p>
-                              <p className="text-[#00E676] text-xs font-mono mt-0.5">{p.fix}</p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    <div className="flex gap-2 flex-wrap">
-                      <button onClick={()=>{handleViewDetail(f)}} className="btn-primary px-4 py-2 rounded-lg text-sm text-white font-semibold"><span>📊 Full Analysis</span></button>
-                      <button onClick={()=>{setSearchQ('');setTab('search')}} className="btn-outline px-4 py-2 rounded-lg text-sm font-semibold">🔍 Search This</button>
-                      <button onClick={()=>handleDelete(f.id,f.name)} className="px-4 py-2 rounded-lg text-sm border border-[rgba(255,23,68,0.3)] text-[#FF1744] hover:bg-[rgba(255,23,68,0.08)] transition-all font-semibold">🗑️ Delete</button>
-                    </div>
+                    <p style={{fontFamily:'Syne',fontWeight:800,fontSize:28,color:s.c,marginBottom:4}}>{s.v}</p>
+                    <p style={{color:'#7A9CC0',fontSize:11}}>{s.sub}</p>
                   </div>
                 ))}
               </div>
-            )}
 
-            {/* ── SEARCH ── */}
-            {tab==='search' && (
-              <div style={{animation:'pageIn 0.3s ease both'}}>
-                <form onSubmit={handleSearch} className="mb-6">
-                  <div className="search-bar rounded-xl flex items-center px-4 py-3 gap-3">
-                    <svg className="w-5 h-5 text-[#00C6FF] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35" strokeLinecap="round"/></svg>
-                    <input value={searchQ} onChange={e=>setSearchQ(e.target.value)}
-                      className="flex-1 bg-transparent text-[#E8F4FD] outline-none text-sm"
-                      placeholder="Search across all indexed files using BM25…" />
-                    {searchQ && <button type="button" onClick={()=>{setSearchQ('');setSearchResults([])}} className="text-[#7A9CC0] hover:text-white text-xl">×</button>}
-                    <button type="submit" disabled={searching} className="btn-primary px-5 py-2 rounded-xl text-sm text-white font-semibold shrink-0 disabled:opacity-60">
-                      <span>{searching?'…':'Search'}</span>
-                    </button>
-                  </div>
-                </form>
-
-                {files.length === 0 && (
-                  <div className="text-center py-16 card p-10">
-                    <div className="text-5xl mb-3">📤</div>
-                    <p className="text-[#7A9CC0]">Upload files first to enable search.</p>
-                    <button onClick={()=>setTab('upload')} className="mt-4 btn-primary px-5 py-2 rounded-xl text-white text-sm"><span>Upload File</span></button>
-                  </div>
-                )}
-
-                {searching && (
-                  <div className="space-y-3">
-                    {[...Array(3)].map((_,i)=><div key={i} className="card p-5 space-y-2"><div className="shimmer h-4 rounded w-3/4"/><div className="shimmer h-3 rounded w-full"/><div className="shimmer h-3 rounded w-5/6"/></div>)}
-                  </div>
-                )}
-
-                {!searching && searchResults.length > 0 && (
-                  <div>
-                    <p className="text-[#7A9CC0] text-xs mb-4">
-                      <strong className="text-[#00C6FF]">{searchResults.length}</strong> results for "<strong className="text-white">{searchQ}</strong>" — {searchLatency}ms (BM25)
-                    </p>
-                    <div className="space-y-3">
-                      {searchResults.map((r,i) => (
-                        <div key={i} className="card p-5" style={{animation:`slideUpIn 0.3s ease ${i*0.05}s both`}}>
-                          <div className="flex items-start justify-between mb-2">
-                            <div className="flex items-center gap-2">
-                              <span className="text-lg">📄</span>
-                              <span className="font-display font-semibold text-[#00C6FF] text-sm">{r.fileName}</span>
+              {files.length===0?(
+                <div className="card" style={{padding:64,textAlign:'center'}}>
+                  <div style={{fontSize:72,marginBottom:16}}>📤</div>
+                  <h3 style={{fontFamily:'Syne',fontWeight:700,fontSize:22,color:'white',marginBottom:10}}>No files indexed yet</h3>
+                  <p style={{color:'#7A9CC0',marginBottom:24}}>Upload a .txt file to get real analysis, search, and optimization insights.</p>
+                  <button onClick={()=>setTab('upload')} className="btn-p" style={{padding:'12px 28px',borderRadius:10,fontSize:14}}><span>Upload Your First File</span></button>
+                </div>
+              ):(
+                <>
+                  {/* Recent files */}
+                  <div style={{marginBottom:24}}>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
+                      <h2 style={{fontFamily:'Syne',fontWeight:700,color:'white',fontSize:16}}>Recent Files</h2>
+                      <button onClick={()=>setTab('files')} style={{background:'none',border:'none',color:'#00C6FF',fontSize:13}}>View all →</button>
+                    </div>
+                    <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                      {files.slice(0,3).map(f=>(
+                        <div key={f.id} className="card" style={{padding:'14px 18px',display:'flex',alignItems:'center',gap:14}}>
+                          <div style={{width:36,height:36,borderRadius:8,background:'linear-gradient(135deg,rgba(0,198,255,0.15),rgba(123,47,190,0.15))',border:'1px solid rgba(0,198,255,0.2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,flexShrink:0}}>📄</div>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:3}}>
+                              <p style={{fontFamily:'Syne',fontWeight:600,color:'white',fontSize:14,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{f.fileName}</p>
+                              <span className="badge bs" style={{fontSize:10,flexShrink:0}}>{f.status}</span>
                             </div>
-                            <div className="flex items-center gap-2 shrink-0">
-                              <span className="badge badge-primary text-xs">Score: {r.score}</span>
-                              <span className="text-[#7A9CC0] text-xs">{r.matchCount} terms matched</span>
-                            </div>
+                            <p style={{color:'#7A9CC0',fontSize:12}}>{fmt(f.totalQueries)} queries · {f.uniquePatterns} patterns · {fmtDate(f.uploadedAt)}</p>
                           </div>
-                          <p className="text-[#7A9CC0] text-sm leading-relaxed"
-                            dangerouslySetInnerHTML={{__html: highlightText(r.excerpt, r.highlights)}} />
+                          <div style={{display:'flex',gap:8,flexShrink:0}}>
+                            <button onClick={()=>{handleViewFull(f);setTab('files')}} className="btn-o" style={{padding:'6px 14px',borderRadius:7,fontSize:12,border:'1px solid rgba(0,198,255,0.3)'}}>View</button>
+                            <button onClick={()=>handleDelete(f.id,f.fileName)} style={{padding:'6px 14px',borderRadius:7,fontSize:12,border:'1px solid rgba(255,23,68,0.25)',background:'transparent',color:'#FF6B35'}}>Delete</button>
+                          </div>
                         </div>
                       ))}
                     </div>
                   </div>
-                )}
 
-                {!searching && searchResults.length === 0 && searchQ && files.length > 0 && (
-                  <div className="text-center py-16 text-[#7A9CC0]">
-                    <div className="text-5xl mb-3">😕</div>
-                    <p>No results found for "<strong className="text-white">{searchQ}</strong>"</p>
-                    <p className="text-sm mt-2">Try different keywords or check your indexed files.</p>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* ── ANALYTICS ── */}
-            {tab==='analytics' && (
-              <div className="space-y-5" style={{animation:'pageIn 0.3s ease both'}}>
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                  {[
-                    ['Files','📁',totalFiles.toString(),'uploaded'],
-                    ['Words','📝',fmt(totalWords),'indexed'],
-                    ['Vocab Richness','🎯',avgVocab+'%','avg uniqueness'],
-                    ['Index Terms','🔑',fmt(indexSize),'unique terms'],
-                  ].map(([l,icon,v,s])=>(
-                    <div key={l} className="card p-5">
-                      <div className="flex items-center gap-2 mb-2"><span className="text-xl">{icon}</span><span className="text-[#7A9CC0] text-xs">{l}</span></div>
-                      <p className="font-display font-bold text-2xl text-white mb-1">{v}</p>
-                      <p className="text-[#7A9CC0] text-xs">{s}</p>
+                  {/* Top keywords */}
+                  {analytics?.topKeywords?.length>0&&(
+                    <div className="card" style={{padding:20,marginBottom:24}}>
+                      <h3 style={{fontFamily:'Syne',fontWeight:700,color:'white',fontSize:15,marginBottom:14}}>🔑 Top Keywords Across All Files</h3>
+                      <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
+                        {analytics.topKeywords.slice(0,18).map((k:any)=>(
+                          <button key={k.word} onClick={()=>{setSearchQ(k.word);setTab('search')}}
+                            className="badge bp" style={{fontSize:13,padding:'6px 14px',border:'1px solid rgba(0,198,255,0.2)'}}>
+                            {k.word} <span style={{opacity:0.55,marginLeft:4}}>×{k.freq}</span>
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                  ))}
-                </div>
+                  )}
 
-                {files.length === 0 ? (
-                  <div className="card p-10 text-center"><p className="text-[#7A9CC0]">Upload files to see analytics.</p></div>
-                ) : (
-                  <>
-                    <div className="card p-6">
-                      <h3 className="font-display font-bold text-white mb-4">File Overview</h3>
-                      <div className="space-y-3">
-                        {files.map(f => (
-                          <div key={f.id} className="flex items-center gap-4 p-3 rounded-xl hover:bg-[rgba(0,198,255,0.03)] transition-colors">
-                            <span className="text-lg">📄</span>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-white text-sm font-medium truncate">{f.name}</p>
-                              <p className="text-[#7A9CC0] text-xs">{fmt(f.wordCount)} words · vocab richness {f.vocabRichness}%</p>
-                            </div>
-                            <div className="progress-bar w-32 h-2">
-                              <div className="progress-fill h-full" style={{width:`${Math.min(100,f.vocabRichness)}%`}}/>
-                            </div>
-                            <span className="text-[#7A9CC0] text-xs w-10 text-right">{f.vocabRichness}%</span>
+                  {/* Actionable insights */}
+                  {analytics?.allSuggestions?.length>0&&(
+                    <div className="card" style={{padding:20}}>
+                      <h3 style={{fontFamily:'Syne',fontWeight:700,color:'white',fontSize:15,marginBottom:14}}>💡 Actionable Insights</h3>
+                      <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                        {analytics.allSuggestions.map((s:string,i:number)=>(
+                          <div key={i} style={{display:'flex',gap:10,padding:'10px 14px',borderRadius:8,background:'rgba(0,198,255,0.04)',border:'1px solid rgba(0,198,255,0.08)'}}>
+                            <span style={{color:'#00C6FF',flexShrink:0}}>→</span>
+                            <p style={{color:'#7A9CC0',fontSize:13,lineHeight:1.5}}>{s}</p>
                           </div>
                         ))}
                       </div>
                     </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
 
-                    {files.some(f=>f.queryAnalysis?.slowPatterns?.length) && (
-                      <div className="card p-6">
-                        <h3 className="font-display font-bold text-white mb-4">⚡ Query Optimization Issues Found</h3>
-                        <div className="space-y-3">
-                          {files.flatMap(f=>(f.queryAnalysis?.slowPatterns||[]).map((p:any)=>({...p,file:f.name}))).slice(0,8).map((p:any,i:number)=>(
-                            <div key={i} className="flex items-start gap-3 p-4 rounded-xl bg-[rgba(0,0,0,0.2)] border border-[rgba(0,198,255,0.05)]">
-                              <span className="badge text-xs shrink-0 mt-0.5" style={{background:`${IMPACT_COLOR[p.impact]}20`,border:`1px solid ${IMPACT_COLOR[p.impact]}40`,color:IMPACT_COLOR[p.impact]}}>{p.impact}</span>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <p className="text-white text-sm font-semibold">{p.pattern}</p>
-                                  <span className="text-[#7A9CC0] text-xs">in {p.file}</span>
-                                  <span className="badge badge-primary text-xs">×{p.count}</span>
-                                </div>
-                                <p className="text-[#7A9CC0] text-xs mb-1">{p.suggestion}</p>
-                                <p className="text-[#00E676] text-xs font-mono">Fix: {p.fix}</p>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </>
+          {/* ── UPLOAD ── */}
+          {tab==='upload'&&(
+            <div style={{animation:'pageIn 0.3s ease both'}}>
+              <input ref={fileInputRef} type="file" accept=".txt" style={{display:'none'}} onChange={e=>{const f=e.target.files?.[0];if(f)handleUpload(f);e.target.value=''}}/>
+              <div
+                onDragOver={e=>{e.preventDefault();setDragOver(true)}}
+                onDragLeave={()=>setDragOver(false)}
+                onDrop={e=>{e.preventDefault();setDragOver(false);const f=e.dataTransfer.files[0];if(f)handleUpload(f)}}
+                onClick={()=>!uploading&&fileInputRef.current?.click()}
+                className="card"
+                style={{padding:72,textAlign:'center',marginBottom:24,border:`2px dashed ${dragOver?'#00C6FF':'rgba(0,198,255,0.2)'}`,background:dragOver?'rgba(0,198,255,0.04)':'',transition:'all 0.3s',cursor:'none'}}>
+                <div style={{fontSize:64,marginBottom:14}}>{uploading?'⏳':'📤'}</div>
+                <h2 style={{fontFamily:'Syne',fontWeight:700,fontSize:26,color:'white',marginBottom:8}}>{uploading?'Indexing file…':'Upload a .txt File'}</h2>
+                <p style={{color:'#7A9CC0',marginBottom:24,maxWidth:480,margin:'0 auto 24px'}}>
+                  {uploading?'Building inverted index, applying 10 detection rules, extracting keywords…':'Drag & drop or click. Max 10MB. SQL queries, search logs, API calls — any line-delimited text.'}
+                </p>
+                {!uploading&&(
+                  <div className="btn-p" style={{display:'inline-flex',padding:'12px 28px',borderRadius:10,fontSize:14}}>
+                    <span>Choose File</span>
+                  </div>
                 )}
+                {uploading&&<div style={{display:'flex',justifyContent:'center'}}><div style={{width:32,height:32,border:'3px solid rgba(0,198,255,0.3)',borderTopColor:'#00C6FF',borderRadius:'50%',animation:'spin 1s linear infinite'}}/></div>}
               </div>
-            )}
 
-            {/* ── SETTINGS ── */}
-            {tab==='settings' && (
-              <div className="space-y-5" style={{animation:'pageIn 0.3s ease both'}}>
-                <div className="card p-6">
-                  <h2 className="font-display font-bold text-white mb-5">Profile</h2>
-                  <div className="flex items-center gap-4 mb-5">
-                    <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#00C6FF] to-[#7B2FBE] flex items-center justify-center text-white text-2xl font-bold font-display">{user?.name?.[0]?.toUpperCase()||'U'}</div>
-                    <div>
-                      <p className="font-display font-bold text-white text-lg">{user?.name||'User'}</p>
-                      <p className="text-[#7A9CC0] text-sm">{user?.email||'user@example.com'}</p>
-                    </div>
+              {/* Feature cards */}
+              <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:16,marginBottom:24}}>
+                {[{icon:'🔍',t:'BM25 Search',d:'Real inverted index built instantly. Search results ranked by term frequency × inverse document frequency.'},
+                  {icon:'⚡',t:'10 SQL Rules',d:'SELECT *, leading LIKE %, missing WHERE, N+1, OR vs IN, ORDER BY, stopwords, JOINs, long queries, boolean misuse.'},
+                  {icon:'📊',t:'Real Analytics',d:'Category distribution, top keywords with frequencies, vocabulary richness, query length stats — all from your file.'}
+                ].map(f=>(
+                  <div key={f.t} className="card" style={{padding:20}}>
+                    <div style={{fontSize:30,marginBottom:10}}>{f.icon}</div>
+                    <h3 style={{fontFamily:'Syne',fontWeight:700,color:'white',fontSize:15,marginBottom:6}}>{f.t}</h3>
+                    <p style={{color:'#7A9CC0',fontSize:13,lineHeight:1.6}}>{f.d}</p>
                   </div>
-                  <div className="grid sm:grid-cols-2 gap-4">
-                    {['Name','Email'].map(f=>(
-                      <div key={f}>
-                        <label className="block text-[#7A9CC0] text-xs font-medium mb-1.5">{f}</label>
-                        <input type={f==='Email'?'email':'text'} defaultValue={f==='Name'?user?.name:user?.email} className="input-field w-full px-4 py-3 rounded-xl text-sm"/>
+                ))}
+              </div>
+
+              {/* Example formats */}
+              <div className="card" style={{padding:20}}>
+                <h3 style={{fontFamily:'Syne',fontWeight:700,color:'white',fontSize:15,marginBottom:14}}>📋 Example File Formats</h3>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
+                  <div className="term">
+                    <div className="th"><div className="td" style={{background:'#ff5f56'}}/><div className="td" style={{background:'#ffbd2e'}}/><div className="td" style={{background:'#27c93f'}}/><span style={{color:'#7A9CC0',fontSize:11,marginLeft:8}}>sql_queries.txt</span></div>
+                    <pre style={{padding:14,fontSize:11,lineHeight:1.7,margin:0,color:'#00E676'}}>{`SELECT * FROM users
+SELECT id FROM orders WHERE user_id = 123
+SELECT * FROM products WHERE name LIKE '%phone%'
+UPDATE users SET status = 1 WHERE id IN (1,2,3)
+SELECT * FROM logs ORDER BY created_at DESC
+DELETE FROM sessions WHERE expired = 1`}</pre>
+                  </div>
+                  <div className="term">
+                    <div className="th"><div className="td" style={{background:'#ff5f56'}}/><div className="td" style={{background:'#ffbd2e'}}/><div className="td" style={{background:'#27c93f'}}/><span style={{color:'#7A9CC0',fontSize:11,marginLeft:8}}>search_log.txt</span></div>
+                    <pre style={{padding:14,fontSize:11,lineHeight:1.7,margin:0,color:'#00E676'}}>{`machine learning tutorials 2025
+how to optimize SQL queries
+best distributed systems books
+the a is are in the
+next.js vs remix performance
+buy iphone 15 pro cheap
+what is transformer architecture`}</pre>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── FILES ── */}
+          {tab==='files'&&(
+            <div style={{animation:'pageIn 0.3s ease both'}}>
+              {files.length===0?(
+                <div className="card" style={{padding:64,textAlign:'center'}}>
+                  <div style={{fontSize:56,marginBottom:14}}>📁</div>
+                  <h3 style={{fontFamily:'Syne',fontWeight:700,fontSize:20,color:'white',marginBottom:10}}>No files yet</h3>
+                  <button onClick={()=>setTab('upload')} className="btn-p" style={{padding:'11px 24px',borderRadius:10,fontSize:14}}><span>Upload File</span></button>
+                </div>
+              ):(
+                <div style={{display:'flex',flexDirection:'column',gap:16}}>
+                  {files.map(f=>(
+                    <div key={f.id} className="card" style={{padding:24}}>
+                      {/* Header */}
+                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:16}}>
+                        <div style={{display:'flex',gap:12,alignItems:'center'}}>
+                          <div style={{width:40,height:40,borderRadius:10,background:'linear-gradient(135deg,rgba(0,198,255,0.15),rgba(123,47,190,0.15))',border:'1px solid rgba(0,198,255,0.2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20}}>📄</div>
+                          <div>
+                            <h3 style={{fontFamily:'Syne',fontWeight:700,color:'white',fontSize:16}}>{f.fileName}</h3>
+                            <p style={{color:'#7A9CC0',fontSize:12}}>{fmtDate(f.uploadedAt)} · {(f.sizeBytes/1024).toFixed(1)}KB</p>
+                          </div>
+                        </div>
+                        <span className="badge bs" style={{fontSize:11}}>{f.status}</span>
                       </div>
-                    ))}
-                  </div>
-                  <button onClick={()=>toast.success('Profile updated!')} className="mt-4 btn-primary px-5 py-2.5 rounded-xl text-white font-semibold text-sm"><span>Save Profile</span></button>
-                </div>
 
-                <div className="card p-6">
-                  <h2 className="font-display font-bold text-white mb-5">Email Configuration</h2>
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-[#7A9CC0] text-xs font-medium mb-1.5">Resend API Key</label>
-                      <input type="password" value={settings.resendApiKey} onChange={e=>setSettings(p=>({...p,resendApiKey:e.target.value}))} className="input-field w-full px-4 py-3 rounded-xl text-sm font-mono" placeholder="re_xxxxxxxxxxxx"/>
-                      <p className="text-[#7A9CC0] text-xs mt-1">From <a href="https://resend.com/api-keys" target="_blank" className="text-[#00C6FF]">resend.com/api-keys</a></p>
-                    </div>
-                    <div>
-                      <label className="block text-[#7A9CC0] text-xs font-medium mb-1.5">Admin Gmail (receives notifications)</label>
-                      <input type="email" value={settings.adminEmail} onChange={e=>setSettings(p=>({...p,adminEmail:e.target.value}))} className="input-field w-full px-4 py-3 rounded-xl text-sm" placeholder="your@gmail.com"/>
-                    </div>
-                    <div>
-                      <label className="block text-[#7A9CC0] text-xs font-medium mb-1.5">From Name</label>
-                      <input type="text" value={settings.fromName} onChange={e=>setSettings(p=>({...p,fromName:e.target.value}))} className="input-field w-full px-4 py-3 rounded-xl text-sm"/>
-                    </div>
-                  </div>
-                </div>
+                      {/* Stats grid */}
+                      <div style={{display:'grid',gridTemplateColumns:'repeat(6,1fr)',gap:10,marginBottom:16}}>
+                        {[['Queries',fmt(f.totalQueries)],['Patterns',f.uniquePatterns],['Avg Len',f.avgLength+'ch'],['Min Len',f.minLength+'ch'],['Max Len',f.maxLength+'ch'],['Issues',f.slowPatterns?.length||0]].map(([l,v])=>(
+                          <div key={l} style={{textAlign:'center',padding:'10px 8px',borderRadius:8,background:'rgba(0,198,255,0.04)',border:'1px solid rgba(0,198,255,0.06)'}}>
+                            <p style={{color:'#7A9CC0',fontSize:10,marginBottom:3}}>{l}</p>
+                            <p style={{fontFamily:'Syne',fontWeight:700,color:'white',fontSize:15}}>{v}</p>
+                          </div>
+                        ))}
+                      </div>
 
-                <div className="card p-6">
-                  <h2 className="font-display font-bold text-white mb-4">Notifications</h2>
-                  {[['crawlAlerts','Index completion alerts','Get notified when a file finishes indexing'],['weeklyDigest','Weekly digest','Summary of search activity every Monday']].map(([k,l,d])=>(
-                    <div key={k} className="flex items-center gap-4 p-3 rounded-xl hover:bg-[rgba(0,198,255,0.03)] transition-colors mb-2">
-                      <button onClick={()=>setSettings(p=>({...p,[k]:!p[k as keyof typeof p]}))}
-                        className={`relative w-10 h-5 rounded-full transition-all duration-300 shrink-0 ${settings[k as keyof typeof settings]?'bg-[#00C6FF]':'bg-[rgba(122,156,192,0.3)]'}`}>
-                        <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all duration-300 ${settings[k as keyof typeof settings]?'left-5':'left-0.5'}`}/>
-                      </button>
-                      <div><p className="text-white text-sm font-medium">{l}</p><p className="text-[#7A9CC0] text-xs">{d}</p></div>
+                      {/* Top keywords */}
+                      {f.topKeywords?.length>0&&(
+                        <div style={{marginBottom:14}}>
+                          <p style={{color:'#7A9CC0',fontSize:11,marginBottom:7,textTransform:'uppercase',letterSpacing:'0.05em'}}>Top Keywords</p>
+                          <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
+                            {f.topKeywords.map((k:any)=>(
+                              <span key={k.word} className="badge bp" style={{fontSize:11}}>{k.word} <span style={{opacity:0.55}}>×{k.freq}</span></span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Slow patterns preview */}
+                      {f.slowPatterns?.length>0&&(
+                        <div style={{marginBottom:16,background:'rgba(0,0,0,0.2)',border:'1px solid rgba(0,198,255,0.06)',borderRadius:10,padding:14}}>
+                          <p style={{color:'#7A9CC0',fontSize:11,marginBottom:10,textTransform:'uppercase',letterSpacing:'0.05em'}}>⚡ Issues Detected ({f.slowPatterns.length})</p>
+                          <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                            {f.slowPatterns.slice(0,4).map((p:any,i:number)=>(
+                              <div key={i} style={{display:'flex',gap:10,alignItems:'flex-start'}}>
+                                <span style={{background:IMPACT_BG[p.impact],border:`1px solid ${IMPACT_COLOR[p.impact]}40`,color:IMPACT_COLOR[p.impact],padding:'2px 7px',borderRadius:4,fontSize:10,fontWeight:600,flexShrink:0}}>{p.impact}</span>
+                                <div style={{minWidth:0}}>
+                                  <p style={{color:'white',fontSize:13,fontWeight:600}}>{p.pattern} <span style={{color:'#7A9CC0',fontWeight:400}}>×{p.count}</span></p>
+                                  <p style={{color:'#7A9CC0',fontSize:11}}>{p.suggestion}</p>
+                                  <p style={{color:'#00E676',fontSize:11,fontFamily:'JetBrains Mono',marginTop:2}}>Fix: {p.fix.substring(0,80)}</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Categories */}
+                      {f.categories?.length>0&&(
+                        <div style={{marginBottom:16}}>
+                          <p style={{color:'#7A9CC0',fontSize:11,marginBottom:7,textTransform:'uppercase',letterSpacing:'0.05em'}}>Categories</p>
+                          <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                            {f.categories.map((c:any)=>(
+                              <span key={c.name} style={{padding:'4px 10px',borderRadius:6,background:'rgba(123,47,190,0.15)',border:'1px solid rgba(123,47,190,0.2)',color:'#A855F7',fontSize:12}}>
+                                {c.name} {c.pct}%
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Duplicates */}
+                      {f.duplicates?.length>0&&(
+                        <div style={{marginBottom:16,background:'rgba(255,214,0,0.04)',border:'1px solid rgba(255,214,0,0.15)',borderRadius:8,padding:12}}>
+                          <p style={{color:'#FFD600',fontSize:11,fontWeight:600,marginBottom:6}}>💡 Caching Opportunities — {f.duplicates.length} duplicate patterns</p>
+                          {f.duplicates.slice(0,3).map((d:string,i:number)=>(
+                            <p key={i} style={{color:'#7A9CC0',fontSize:11,fontFamily:'JetBrains Mono',marginBottom:2}}>{d}</p>
+                          ))}
+                          {f.duplicates.length>3&&<p style={{color:'#7A9CC0',fontSize:11,marginTop:4}}>…and {f.duplicates.length-3} more</p>}
+                        </div>
+                      )}
+
+                      {/* Actions */}
+                      <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                        <button onClick={()=>handleViewFull(f)} className="btn-p" style={{padding:'9px 18px',borderRadius:9,fontSize:13}}><span>📊 Full Report</span></button>
+                        <button onClick={()=>{setSearchQ(f.topKeywords?.[0]?.word||'');setTab('search')}} className="btn-o" style={{padding:'9px 18px',borderRadius:9,fontSize:13,border:'1px solid rgba(0,198,255,0.3)'}}>🔍 Search</button>
+                        <button onClick={()=>handleDelete(f.id,f.fileName)} style={{padding:'9px 18px',borderRadius:9,border:'1px solid rgba(255,23,68,0.25)',background:'transparent',color:'#FF6B35',fontSize:13,fontFamily:'Syne',fontWeight:600}}>🗑️ Delete</button>
+                      </div>
                     </div>
                   ))}
                 </div>
+              )}
+            </div>
+          )}
 
-                <div className="card p-6">
-                  <h2 className="font-display font-bold text-white mb-4">BM25 Ranking Parameters</h2>
-                  <div className="grid sm:grid-cols-3 gap-4">
-                    {[['alpha','BM25 Weight (α)','0.7'],['bm25K1','k1 (term saturation)','1.5'],['bm25B','b (length norm)','0.75']].map(([k,l,def])=>(
-                      <div key={k}>
-                        <label className="block text-[#7A9CC0] text-xs font-medium mb-1.5">{l}</label>
-                        <input type="number" step="0.05" value={settings[k as keyof typeof settings]} onChange={e=>setSettings(p=>({...p,[k]:e.target.value}))} className="input-field w-full px-4 py-3 rounded-xl text-sm font-mono"/>
+          {/* ── SEARCH ── */}
+          {tab==='search'&&(
+            <div style={{animation:'pageIn 0.3s ease both'}}>
+              <form onSubmit={handleSearch} style={{marginBottom:20}}>
+                <div className="sbar" style={{borderRadius:12,display:'flex',alignItems:'center',padding:'12px 18px',gap:12}}>
+                  <svg style={{width:18,height:18,color:'#00C6FF',flexShrink:0}} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35" strokeLinecap="round"/></svg>
+                  <input value={searchQ} onChange={e=>setSearchQ(e.target.value)} className="inp" style={{flex:1,background:'transparent',border:'none',boxShadow:'none',padding:0,fontSize:14}} placeholder="Search across all indexed files with BM25…"/>
+                  {searchQ&&<button type="button" onClick={()=>{setSearchQ('');setSearchRes([])}} style={{background:'none',border:'none',color:'#7A9CC0',fontSize:20,lineHeight:1}}>×</button>}
+                  <button type="submit" disabled={searching} className="btn-p" style={{padding:'8px 20px',borderRadius:9,fontSize:13,opacity:searching?0.6:1,flexShrink:0}}><span>{searching?'…':'Search'}</span></button>
+                </div>
+              </form>
+
+              {files.length===0&&(
+                <div className="card" style={{padding:48,textAlign:'center'}}>
+                  <div style={{fontSize:48,marginBottom:12}}>📤</div>
+                  <p style={{color:'#7A9CC0',marginBottom:16}}>Upload files first to enable BM25 search.</p>
+                  <button onClick={()=>setTab('upload')} className="btn-p" style={{padding:'10px 22px',borderRadius:9,fontSize:13}}><span>Upload File</span></button>
+                </div>
+              )}
+
+              {searching&&(
+                <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                  {[...Array(3)].map((_,i)=>(
+                    <div key={i} className="card" style={{padding:18,display:'flex',flexDirection:'column',gap:8}}>
+                      <div className="shimmer" style={{height:13,borderRadius:5,width:'65%'}}/>
+                      <div className="shimmer" style={{height:11,borderRadius:5,width:'90%'}}/>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {!searching&&searchRes.length>0&&(
+                <div>
+                  <p style={{color:'#7A9CC0',fontSize:12,marginBottom:14}}>
+                    <strong style={{color:'#00C6FF'}}>{searchRes.length}</strong> results for "<strong style={{color:'white'}}>{searchQ}</strong>" — {searchLatency}ms (BM25)
+                  </p>
+                  <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                    {searchRes.map((r,i)=>(
+                      <div key={i} className="card" style={{padding:18,animation:`slideUp 0.3s ease ${i*0.05}s both`}}>
+                        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+                          <div style={{display:'flex',alignItems:'center',gap:8}}>
+                            <span style={{fontSize:16}}>📄</span>
+                            <span style={{fontFamily:'Syne',fontWeight:600,color:'#00C6FF',fontSize:14}}>{r.fileName}</span>
+                          </div>
+                          <div style={{display:'flex',gap:8}}>
+                            <span className="badge bp" style={{fontSize:11}}>BM25: {r.score}</span>
+                            <span style={{color:'#7A9CC0',fontSize:11}}>{r.matches} terms</span>
+                          </div>
+                        </div>
+                        <p style={{color:'#7A9CC0',fontSize:13,lineHeight:1.6}}
+                          dangerouslySetInnerHTML={{__html:highlight(r.excerpt.substring(0,220),searchQ)}}/>
                       </div>
                     ))}
                   </div>
                 </div>
+              )}
 
-                <div className="flex gap-3">
-                  <button onClick={handleSaveSettings} className="btn-primary px-8 py-3 rounded-xl text-white font-semibold">
-                    <span>{settingsSaved?'✓ Saved!':'💾 Save All Settings'}</span>
-                  </button>
-                  <button onClick={()=>toast.error('Use the delete buttons in My Files tab.')} className="px-6 py-3 rounded-xl border border-[rgba(255,23,68,0.3)] text-[#FF1744] hover:bg-[rgba(255,23,68,0.08)] transition-all font-semibold text-sm">
-                    🗑️ Clear All Data
-                  </button>
+              {!searching&&searchQ&&searchRes.length===0&&files.length>0&&(
+                <div style={{textAlign:'center',padding:'48px 20px'}}>
+                  <div style={{fontSize:48,marginBottom:10}}>😕</div>
+                  <p style={{color:'#7A9CC0'}}>No results for "<strong style={{color:'white'}}>{searchQ}</strong>"</p>
+                </div>
+              )}
+
+              {!searching&&!searchQ&&files.length>0&&(
+                <div style={{textAlign:'center',padding:'32px 20px'}}>
+                  <p style={{color:'#7A9CC0',marginBottom:14}}>Search across {files.length} indexed file{files.length!==1?'s':''}. Try:</p>
+                  <div style={{display:'flex',gap:8,justifyContent:'center',flexWrap:'wrap'}}>
+                    {['SELECT *','machine learning','JOIN','LIKE %','optimize','duplicate'].map(s=>(
+                      <button key={s} onClick={()=>setSearchQ(s)} className="badge bp" style={{fontSize:13,padding:'7px 14px'}}>
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── ANALYTICS ── */}
+          {tab==='analytics'&&(
+            <div style={{animation:'pageIn 0.3s ease both',display:'flex',flexDirection:'column',gap:20}}>
+              {/* Top KPIs */}
+              <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:14}}>
+                {[
+                  {l:'Total Queries',v:fmt(analytics?.totalQueries||0),icon:'🔍',c:'#00C6FF'},
+                  {l:'Files Indexed',v:(analytics?.totalFiles||0).toString(),icon:'📁',c:'#7B2FBE'},
+                  {l:'Searches Run',v:(analytics?.totalSearches||0).toString(),icon:'⚡',c:'#00E676'},
+                  {l:'High Issues',v:(analytics?.slowCount||0).toString(),icon:'⚠️',c:'#FF1744'},
+                ].map(s=>(
+                  <div key={s.l} className="card" style={{padding:18}}>
+                    <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:8}}><span style={{fontSize:18}}>{s.icon}</span><span style={{color:'#7A9CC0',fontSize:11}}>{s.l}</span></div>
+                    <p style={{fontFamily:'Syne',fontWeight:800,fontSize:26,color:s.c}}>{s.v}</p>
+                  </div>
+                ))}
+              </div>
+
+              {files.length===0?(
+                <div className="card" style={{padding:40,textAlign:'center'}}>
+                  <p style={{color:'#7A9CC0'}}>Upload files to see analytics.</p>
+                </div>
+              ):(
+                <>
+                  {/* Category breakdown */}
+                  {analytics?.categorySummary?.length>0&&(
+                    <div className="card" style={{padding:20}}>
+                      <h3 style={{fontFamily:'Syne',fontWeight:700,color:'white',fontSize:15,marginBottom:14}}>Query Category Distribution</h3>
+                      <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                        {analytics.categorySummary.map((c:any)=>{
+                          const total = analytics.categorySummary.reduce((s:number,x:any)=>s+x.count,0)
+                          const pct = Math.round(c.count/Math.max(1,total)*100)
+                          return (
+                            <div key={c.name} style={{display:'flex',alignItems:'center',gap:12}}>
+                              <span style={{color:'white',fontSize:13,width:120,flexShrink:0}}>{c.name}</span>
+                              <div className="pbar" style={{flex:1,height:8}}>
+                                <div className="pfill" style={{width:`${pct}%`}}/>
+                              </div>
+                              <span style={{color:'#7A9CC0',fontSize:12,width:60,textAlign:'right',flexShrink:0}}>{c.count} ({pct}%)</span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* File comparison */}
+                  <div className="card" style={{padding:20}}>
+                    <h3 style={{fontFamily:'Syne',fontWeight:700,color:'white',fontSize:15,marginBottom:14}}>File Overview</h3>
+                    <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                      {files.map(f=>(
+                        <div key={f.id} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 14px',borderRadius:8,background:'rgba(0,198,255,0.03)',border:'1px solid rgba(0,198,255,0.06)'}}>
+                          <span style={{fontSize:16}}>📄</span>
+                          <div style={{flex:1,minWidth:0}}>
+                            <p style={{color:'white',fontSize:13,fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{f.fileName}</p>
+                            <p style={{color:'#7A9CC0',fontSize:11}}>{fmt(f.totalQueries)} queries · {f.uniquePatterns} patterns · {f.slowPatterns?.length||0} issues</p>
+                          </div>
+                          <div style={{display:'flex',gap:4}}>
+                            {f.slowPatterns?.slice(0,3).map((p:any,i:number)=>(
+                              <span key={i} style={{width:8,height:8,borderRadius:'50%',background:IMPACT_COLOR[p.impact],display:'inline-block'}} title={p.impact}/>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* All optimization issues */}
+                  {files.some(f=>f.slowPatterns?.length)&&(
+                    <div className="card" style={{padding:20}}>
+                      <h3 style={{fontFamily:'Syne',fontWeight:700,color:'white',fontSize:15,marginBottom:14}}>⚡ All Optimization Issues</h3>
+                      <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                        {files.flatMap(f=>(f.slowPatterns||[]).map((p:any)=>({...p,file:f.fileName}))).sort((a:any,b:any)=>({HIGH:0,MEDIUM:1,LOW:2}[a.impact]-{HIGH:0,MEDIUM:1,LOW:2}[b.impact])).map((p:any,i:number)=>(
+                          <div key={i} style={{display:'flex',gap:10,padding:'12px 14px',borderRadius:8,background:'rgba(0,0,0,0.2)',border:'1px solid rgba(0,198,255,0.05)'}}>
+                            <span style={{background:IMPACT_BG[p.impact],border:`1px solid ${IMPACT_COLOR[p.impact]}40`,color:IMPACT_COLOR[p.impact],padding:'3px 8px',borderRadius:4,fontSize:11,fontWeight:600,flexShrink:0,height:'fit-content'}}>{p.impact}</span>
+                            <div style={{flex:1,minWidth:0}}>
+                              <div style={{display:'flex',gap:6,alignItems:'center',marginBottom:3,flexWrap:'wrap'}}>
+                                <p style={{color:'white',fontSize:13,fontWeight:600}}>{p.pattern}</p>
+                                <span style={{color:'#7A9CC0',fontSize:11}}>in {p.file}</span>
+                                <span className="badge bp" style={{fontSize:10}}>×{p.count}</span>
+                              </div>
+                              <p style={{color:'#7A9CC0',fontSize:12,marginBottom:3}}>{p.suggestion}</p>
+                              <p style={{color:'#00E676',fontSize:11,fontFamily:'JetBrains Mono'}}>→ {p.fix}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Recent search log */}
+                  {analytics?.recentLogs?.length>0&&(
+                    <div className="card" style={{padding:20}}>
+                      <h3 style={{fontFamily:'Syne',fontWeight:700,color:'white',fontSize:15,marginBottom:14}}>Recent Activity Log</h3>
+                      <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                        {analytics.recentLogs.slice(0,10).map((l:any,i:number)=>(
+                          <div key={i} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 12px',borderRadius:7,background:'rgba(0,0,0,0.15)'}}>
+                            <span style={{color:'#7A9CC0',fontSize:11,flexShrink:0}}>{fmtDate(l.ts)}</span>
+                            <span style={{color:'white',fontSize:12,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{l.query}</span>
+                            <span style={{color:'#7A9CC0',fontSize:11,flexShrink:0}}>{l.latencyMs}ms</span>
+                            <span className={l.success?'badge bs':'badge be'} style={{fontSize:10,flexShrink:0}}>{l.success?'✓ OK':'✗ Err'}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {/* ── SETTINGS ── */}
+          {tab==='settings'&&(
+            <div style={{animation:'pageIn 0.3s ease both',display:'flex',flexDirection:'column',gap:18}}>
+              {/* Profile */}
+              <div className="card" style={{padding:24}}>
+                <h2 style={{fontFamily:'Syne',fontWeight:700,color:'white',fontSize:17,marginBottom:18}}>Profile</h2>
+                <div style={{display:'flex',alignItems:'center',gap:14,marginBottom:20}}>
+                  <div style={{width:56,height:56,borderRadius:'50%',background:'linear-gradient(135deg,#00C6FF,#7B2FBE)',display:'flex',alignItems:'center',justifyContent:'center',color:'white',fontFamily:'Syne',fontWeight:700,fontSize:22}}>{user?.name?.[0]?.toUpperCase()||'U'}</div>
+                  <div><p style={{fontFamily:'Syne',fontWeight:700,color:'white',fontSize:17}}>{user?.name||'User'}</p><p style={{color:'#7A9CC0',fontSize:13}}>{user?.email||''}</p></div>
+                </div>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
+                  {['Name','Email'].map(f=>(
+                    <div key={f}>
+                      <label style={{display:'block',color:'#7A9CC0',fontSize:11,fontWeight:500,marginBottom:5}}>{f}</label>
+                      <input type={f==='Email'?'email':'text'} defaultValue={f==='Name'?user?.name:user?.email} className="inp" style={{width:'100%',padding:'10px 14px',borderRadius:9,fontSize:13}}/>
+                    </div>
+                  ))}
+                </div>
+                <button onClick={()=>showToast('Profile updated!')} className="btn-p" style={{marginTop:14,padding:'9px 22px',borderRadius:9,fontSize:13}}><span>Save Profile</span></button>
+              </div>
+
+              {/* Email */}
+              <div className="card" style={{padding:24}}>
+                <h2 style={{fontFamily:'Syne',fontWeight:700,color:'white',fontSize:17,marginBottom:18}}>Email Notifications (Resend)</h2>
+                <div style={{background:'rgba(0,198,255,0.05)',border:'1px solid rgba(0,198,255,0.15)',borderRadius:8,padding:'12px 16px',marginBottom:16}}>
+                  <p style={{color:'#7A9CC0',fontSize:12,lineHeight:1.6}}>
+                    Add your <strong style={{color:'#00C6FF'}}>Resend API key</strong> and Gmail below. Contact form submissions will be delivered to your Gmail automatically.
+                    Get your key from <a href="https://resend.com/api-keys" target="_blank" rel="noreferrer" style={{color:'#00C6FF',textDecoration:'none'}}>resend.com/api-keys</a>
+                  </p>
+                </div>
+                <div style={{display:'flex',flexDirection:'column',gap:14}}>
+                  <div>
+                    <label style={{display:'block',color:'#7A9CC0',fontSize:11,fontWeight:500,marginBottom:5}}>Resend API Key</label>
+                    <input type="password" value={settings.resendKey} onChange={e=>setSettings(p=>({...p,resendKey:e.target.value}))} className="inp" style={{width:'100%',padding:'10px 14px',borderRadius:9,fontSize:13,fontFamily:'JetBrains Mono'}} placeholder="re_xxxxxxxxxxxx"/>
+                  </div>
+                  <div>
+                    <label style={{display:'block',color:'#7A9CC0',fontSize:11,fontWeight:500,marginBottom:5}}>Admin Gmail (receives notifications)</label>
+                    <input type="email" value={settings.adminEmail} onChange={e=>setSettings(p=>({...p,adminEmail:e.target.value}))} className="inp" style={{width:'100%',padding:'10px 14px',borderRadius:9,fontSize:13}} placeholder="your@gmail.com"/>
+                  </div>
+                  <div>
+                    <label style={{display:'block',color:'#7A9CC0',fontSize:11,fontWeight:500,marginBottom:5}}>From Name</label>
+                    <input type="text" value={settings.fromName} onChange={e=>setSettings(p=>({...p,fromName:e.target.value}))} className="inp" style={{width:'100%',padding:'10px 14px',borderRadius:9,fontSize:13}}/>
+                  </div>
                 </div>
               </div>
-            )}
+
+              {/* Notifications */}
+              <div className="card" style={{padding:24}}>
+                <h2 style={{fontFamily:'Syne',fontWeight:700,color:'white',fontSize:17,marginBottom:14}}>Notifications</h2>
+                {[['crawlAlerts','Index completion alerts','Notify when file finishes indexing'],['weeklyDigest','Weekly digest','Summary of search activity every Monday']].map(([k,l,d])=>(
+                  <div key={k} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 0',borderBottom:'1px solid rgba(0,198,255,0.06)'}}>
+                    <button onClick={()=>setSettings(p=>({...p,[k]:!p[k as keyof typeof p]}))}
+                      style={{width:38,height:20,borderRadius:10,border:'none',background:settings[k as keyof typeof settings]?'#00C6FF':'rgba(122,156,192,0.3)',position:'relative',flexShrink:0,transition:'all 0.3s'}}>
+                      <span style={{position:'absolute',top:2,width:16,height:16,borderRadius:'50%',background:'white',transition:'all 0.3s',left:settings[k as keyof typeof settings]?20:2}}/>
+                    </button>
+                    <div><p style={{color:'white',fontSize:13,fontWeight:500}}>{l}</p><p style={{color:'#7A9CC0',fontSize:11}}>{d}</p></div>
+                  </div>
+                ))}
+              </div>
+
+              {/* BM25 params */}
+              <div className="card" style={{padding:24}}>
+                <h2 style={{fontFamily:'Syne',fontWeight:700,color:'white',fontSize:17,marginBottom:14}}>BM25 Ranking Parameters</h2>
+                <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:14}}>
+                  {[['alpha','BM25 Weight (α)','0.7'],['bm25K1','k1 (term saturation)','1.5'],['bm25B','b (length norm)','0.75']].map(([k,l,_])=>(
+                    <div key={k}>
+                      <label style={{display:'block',color:'#7A9CC0',fontSize:11,fontWeight:500,marginBottom:5}}>{l}</label>
+                      <input type="number" step="0.05" value={settings[k as keyof typeof settings]} onChange={e=>setSettings(p=>({...p,[k]:e.target.value}))} className="inp" style={{width:'100%',padding:'10px 14px',borderRadius:9,fontSize:13,fontFamily:'JetBrains Mono'}}/>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{display:'flex',gap:12}}>
+                <button onClick={handleSaveSettings} className="btn-p" style={{padding:'11px 26px',borderRadius:10,fontSize:14}}><span>💾 Save All Settings</span></button>
+                <button onClick={()=>showToast('Use delete buttons in My Files tab.','err')} style={{padding:'11px 20px',borderRadius:10,border:'1px solid rgba(255,23,68,0.25)',background:'transparent',color:'#FF6B35',fontSize:13,fontFamily:'Syne',fontWeight:600}}>🗑️ Clear Session Data</button>
+              </div>
+            </div>
+          )}
+
           </div>
         </div>
       </main>
 
-      {/* Full Analysis Modal */}
-      {expandedFile && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{animation:'fadeIn 0.2s ease both'}}>
-          <div className="absolute inset-0 bg-black/75 backdrop-blur-sm" onClick={()=>setExpandedFile(null)}/>
-          <div className="relative w-full max-w-2xl max-h-[85vh] overflow-y-auto glass rounded-2xl border border-[rgba(0,198,255,0.2)] shadow-2xl" style={{animation:'scaleIn 0.22s ease both'}}>
-            <div className="sticky top-0 glass flex items-center justify-between px-6 py-4 border-b border-[rgba(0,198,255,0.1)]">
+      {/* Full Report Modal */}
+      {expanded&&(
+        <div style={{position:'fixed',inset:0,zIndex:50,display:'flex',alignItems:'center',justifyContent:'center',padding:16,animation:'fadeIn 0.2s ease both'}}>
+          <div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0.75)',backdropFilter:'blur(8px)'}} onClick={()=>setExpanded(null)}/>
+          <div style={{position:'relative',width:'100%',maxWidth:680,maxHeight:'85vh',overflowY:'auto',background:'rgba(10,22,48,0.97)',border:'1px solid rgba(0,198,255,0.2)',borderRadius:18,boxShadow:'0 20px 80px rgba(0,0,0,0.6)',animation:'scaleIn 0.22s ease both'}}>
+            {/* Sticky header */}
+            <div style={{position:'sticky',top:0,background:'rgba(10,22,48,0.98)',backdropFilter:'blur(20px)',display:'flex',justifyContent:'space-between',alignItems:'center',padding:'16px 24px',borderBottom:'1px solid rgba(0,198,255,0.1)',zIndex:10}}>
               <div>
-                <h2 className="font-display font-bold text-white text-lg">{expandedFile.name}</h2>
-                <p className="text-[#7A9CC0] text-xs">{fmtDate(expandedFile.uploadedAt)}</p>
+                <h2 style={{fontFamily:'Syne',fontWeight:700,color:'white',fontSize:17}}>{expanded.fileName}</h2>
+                <p style={{color:'#7A9CC0',fontSize:12}}>{fmtDate(expanded.uploadedAt||expanded.createdAt||'')} · {((expanded.sizeBytes||0)/1024).toFixed(1)}KB</p>
               </div>
-              <button onClick={()=>setExpandedFile(null)} className="w-8 h-8 rounded-lg hover:bg-white/10 flex items-center justify-center text-[#7A9CC0] hover:text-white transition-all text-lg">✕</button>
+              <button onClick={()=>setExpanded(null)} style={{width:32,height:32,borderRadius:8,background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.08)',color:'#7A9CC0',fontSize:18,display:'flex',alignItems:'center',justifyContent:'center'}}>✕</button>
             </div>
 
-            <div className="p-6 space-y-5">
+            <div style={{padding:24,display:'flex',flexDirection:'column',gap:20}}>
               {/* Stats */}
-              <div className="grid grid-cols-3 gap-3">
-                {[['Words',fmt(expandedFile.wordCount)],['Unique Words',fmt(expandedFile.uniqueWords)],['Size',expandedFile.size||((expandedFile.sizeBytes||0)>1024?(Math.round((expandedFile.sizeBytes||0)/1024))+'KB':'<1KB')],['Vocab Richness',(expandedFile.vocabRichness||0)+'%'],['Avg Word Len',(expandedFile.avgWordLength||0)],['Pages',expandedFile.pages||Math.max(1,Math.round((expandedFile.wordCount||0)/500))]].map(([l,v])=>(
-                  <div key={l} className="text-center p-3 rounded-xl bg-[rgba(0,198,255,0.04)] border border-[rgba(0,198,255,0.06)]">
-                    <p className="text-[#7A9CC0] text-xs mb-1">{l}</p>
-                    <p className="font-display font-bold text-white text-sm">{v}</p>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10}}>
+                {[['Total Queries',fmt(expanded.totalQueries||0)],['Unique Patterns',expanded.uniquePatterns||0],['Issues Found',expanded.slowPatterns?.length||0],['Avg Length',(expanded.avgLength||0)+'ch'],['Min Length',(expanded.minLength||0)+'ch'],['Max Length',(expanded.maxLength||0)+'ch']].map(([l,v])=>(
+                  <div key={l} style={{textAlign:'center',padding:'12px 8px',borderRadius:8,background:'rgba(0,198,255,0.04)',border:'1px solid rgba(0,198,255,0.07)'}}>
+                    <p style={{color:'#7A9CC0',fontSize:11,marginBottom:4}}>{l}</p>
+                    <p style={{fontFamily:'Syne',fontWeight:700,color:'white',fontSize:16}}>{v}</p>
                   </div>
                 ))}
               </div>
 
-              {/* Top Keywords */}
-              {expandedFile.topKeywords?.length > 0 && (
+              {/* Keywords */}
+              {expanded.topKeywords?.length>0&&(
                 <div>
-                  <p className="text-[#7A9CC0] text-xs font-semibold uppercase tracking-wider mb-3">Top 10 Keywords</p>
-                  <div className="space-y-2">
-                    {expandedFile.topKeywords.map((k:any,i:number) => (
-                      <div key={k.word} className="flex items-center gap-3">
-                        <span className="text-[#7A9CC0] text-xs w-5 font-mono">{i+1}</span>
-                        <span className="text-white text-sm flex-1">{k.word}</span>
-                        <div className="progress-bar w-24 h-1.5">
-                          <div className="progress-fill h-full" style={{width:`${Math.min(100,Math.round(k.freq/(expandedFile.topKeywords[0]?.freq||1)*100))}%`}}/>
+                  <p style={{color:'#7A9CC0',fontSize:11,fontWeight:600,textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:10}}>Top 12 Keywords</p>
+                  <div style={{display:'flex',flexDirection:'column',gap:7}}>
+                    {expanded.topKeywords.map((k:any,i:number)=>(
+                      <div key={k.word} style={{display:'flex',alignItems:'center',gap:10}}>
+                        <span style={{color:'#7A9CC0',fontSize:11,width:18,fontFamily:'JetBrains Mono'}}>{i+1}</span>
+                        <span style={{color:'white',fontSize:13,flex:1}}>{k.word}</span>
+                        <div className="pbar" style={{width:100,height:5}}>
+                          <div className="pfill" style={{width:`${Math.min(100,Math.round(k.freq/(expanded.topKeywords[0]?.freq||1)*100))}%`}}/>
                         </div>
-                        <span className="text-[#7A9CC0] text-xs w-8 text-right font-mono">{k.freq}</span>
+                        <span style={{color:'#7A9CC0',fontSize:11,width:30,textAlign:'right',fontFamily:'JetBrains Mono'}}>{k.freq}</span>
                       </div>
                     ))}
                   </div>
                 </div>
               )}
 
-              {/* Query Analysis */}
-              {expandedFile.queryAnalysis && (
+              {/* All slow patterns */}
+              {expanded.slowPatterns?.length>0&&(
                 <div>
-                  <p className="text-[#7A9CC0] text-xs font-semibold uppercase tracking-wider mb-3">Query Analysis</p>
-                  <div className="grid grid-cols-3 gap-3 mb-4">
-                    {[['Total Queries',expandedFile.queryAnalysis.totalQueries],['Unique Patterns',expandedFile.queryAnalysis.uniquePatterns],['Duplicates',expandedFile.queryAnalysis.duplicates?.length||0]].map(([l,v])=>(
-                      <div key={l} className="text-center p-3 rounded-xl bg-[rgba(123,47,190,0.08)] border border-[rgba(123,47,190,0.15)]">
-                        <p className="text-[#7A9CC0] text-xs mb-1">{l}</p>
-                        <p className="font-display font-bold text-white text-lg">{v}</p>
+                  <p style={{color:'#7A9CC0',fontSize:11,fontWeight:600,textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:10}}>All Issues ({expanded.slowPatterns.length})</p>
+                  <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                    {expanded.slowPatterns.map((p:any,i:number)=>(
+                      <div key={i} style={{padding:'12px 14px',borderRadius:8,background:'rgba(0,0,0,0.25)',border:'1px solid rgba(0,198,255,0.06)'}}>
+                        <div style={{display:'flex',gap:8,alignItems:'center',marginBottom:6}}>
+                          <span style={{background:IMPACT_BG[p.impact],border:`1px solid ${IMPACT_COLOR[p.impact]}40`,color:IMPACT_COLOR[p.impact],padding:'2px 8px',borderRadius:4,fontSize:10,fontWeight:600}}>{p.impact}</span>
+                          <span style={{color:'white',fontSize:13,fontWeight:600}}>{p.pattern}</span>
+                          <span style={{color:'#7A9CC0',fontSize:11}}>×{p.count}</span>
+                        </div>
+                        <p style={{color:'#7A9CC0',fontSize:12,marginBottom:4}}>{p.suggestion}</p>
+                        <p style={{color:'#00E676',fontSize:11,fontFamily:'JetBrains Mono',marginBottom:4}}>→ {p.fix}</p>
+                        {p.example&&<p style={{color:'#7A9CC0',fontSize:10,fontFamily:'JetBrains Mono',opacity:0.6,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>e.g. {p.example}</p>}
                       </div>
                     ))}
                   </div>
+                </div>
+              )}
 
-                  {expandedFile.queryAnalysis.slowPatterns?.map((p:any,i:number) => (
-                    <div key={i} className="flex items-start gap-3 p-3 rounded-xl bg-[rgba(0,0,0,0.2)] mb-2 border border-[rgba(0,198,255,0.05)]">
-                      <span className="badge text-xs shrink-0" style={{background:`${IMPACT_COLOR[p.impact]}20`,border:`1px solid ${IMPACT_COLOR[p.impact]}40`,color:IMPACT_COLOR[p.impact]}}>{p.impact}</span>
-                      <div>
-                        <p className="text-white text-sm font-semibold">{p.pattern} <span className="text-[#7A9CC0] font-normal text-xs">×{p.count}</span></p>
-                        <p className="text-[#7A9CC0] text-xs">{p.suggestion}</p>
-                        <p className="text-[#00E676] text-xs font-mono mt-0.5">→ {p.fix}</p>
-                        {p.example && <p className="text-[#7A9CC0] text-xs font-mono mt-1 opacity-70 truncate">e.g. {p.example.substring(0,80)}</p>}
-                      </div>
+              {/* Duplicates */}
+              {expanded.duplicates?.length>0&&(
+                <div style={{background:'rgba(255,214,0,0.05)',border:'1px solid rgba(255,214,0,0.15)',borderRadius:8,padding:14}}>
+                  <p style={{color:'#FFD600',fontSize:11,fontWeight:600,marginBottom:8}}>💡 {expanded.duplicates.length} Caching Opportunities</p>
+                  {expanded.duplicates.map((d:string,i:number)=>(
+                    <p key={i} style={{color:'#7A9CC0',fontSize:11,fontFamily:'JetBrains Mono',marginBottom:3}}>{d}</p>
+                  ))}
+                </div>
+              )}
+
+              {/* Suggestions */}
+              {expanded.suggestions?.length>0&&(
+                <div>
+                  <p style={{color:'#7A9CC0',fontSize:11,fontWeight:600,textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:10}}>Actionable Suggestions</p>
+                  {expanded.suggestions.map((s:string,i:number)=>(
+                    <div key={i} style={{display:'flex',gap:8,padding:'8px 12px',borderRadius:7,background:'rgba(0,198,255,0.04)',border:'1px solid rgba(0,198,255,0.07)',marginBottom:6}}>
+                      <span style={{color:'#00C6FF',flexShrink:0}}>→</span>
+                      <p style={{color:'#7A9CC0',fontSize:12,lineHeight:1.5}}>{s}</p>
                     </div>
                   ))}
-
-                  {expandedFile.queryAnalysis.duplicates?.length > 0 && (
-                    <div className="p-3 rounded-xl bg-[rgba(255,214,0,0.05)] border border-[rgba(255,214,0,0.15)]">
-                      <p className="text-[#FFD600] text-xs font-semibold mb-2">💡 Caching Opportunities (Duplicate Patterns)</p>
-                      {expandedFile.queryAnalysis.duplicates.slice(0,5).map((d:string,i:number) => (
-                        <p key={i} className="text-[#7A9CC0] text-xs font-mono">{d}</p>
-                      ))}
-                    </div>
-                  )}
                 </div>
               )}
 
-              <div className="flex gap-2 pt-2">
-                <button onClick={()=>{setSearchQ(expandedFile.topKeywords?.[0]?.word||'');setTab('search');setExpandedFile(null)}}
-                  className="btn-primary px-5 py-2.5 rounded-xl text-white text-sm font-semibold"><span>🔍 Search This File</span></button>
-                <button onClick={()=>{handleDelete(expandedFile.id,expandedFile.name);setExpandedFile(null)}}
-                  className="px-5 py-2.5 rounded-xl text-sm border border-[rgba(255,23,68,0.3)] text-[#FF1744] hover:bg-[rgba(255,23,68,0.08)] transition-all font-semibold">🗑️ Delete</button>
+              {/* Actions */}
+              <div style={{display:'flex',gap:10,paddingTop:4}}>
+                <button onClick={()=>{setSearchQ(expanded.topKeywords?.[0]?.word||'');setTab('search');setExpanded(null)}} className="btn-p" style={{padding:'10px 20px',borderRadius:9,fontSize:13}}><span>🔍 Search This File</span></button>
+                <button onClick={()=>{handleDelete(expanded.id,expanded.fileName);setExpanded(null)}} style={{padding:'10px 18px',borderRadius:9,border:'1px solid rgba(255,23,68,0.25)',background:'transparent',color:'#FF6B35',fontSize:13,fontFamily:'Syne',fontWeight:600}}>🗑️ Delete</button>
               </div>
             </div>
           </div>
         </div>
       )}
+
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   )
 }

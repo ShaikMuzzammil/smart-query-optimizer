@@ -1,323 +1,221 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
-import Navbar from '../components/Navbar'
-import Footer from '../components/Footer'
-import toast, { Toaster } from 'react-hot-toast'
 
-const TYPING_PHRASES = ['site:github.com machine learning','distributed systems AND performance','next.js optimization 2025','BM25 ranking algorithm','site:arxiv.org transformers']
+const TYPING = ['SELECT * FROM users WHERE active = 1','LIKE \'%machine learning%\'','find cheap flights to New York','UPDATE orders SET status = ?','machine learning optimization tips']
 
 const FEATURES = [
-  { icon:'🕷️', title:'Distributed Crawler', desc:'Polite, Bloom-filter-powered crawler. Crawls millions of pages respecting robots.txt and Crawl-Delay headers automatically.', color:'from-[#00C6FF] to-[#0080FF]', glow:'rgba(0,198,255,0.15)' },
-  { icon:'📊', title:'Inverted Index', desc:'Compressed positional postings with var-byte encoding. Supports phrase queries, Boolean operators, and site: filters.', color:'from-[#7B2FBE] to-[#A855F7]', glow:'rgba(123,47,190,0.15)' },
-  { icon:'⚡', title:'BM25 + PageRank', desc:'Hybrid ranking combining BM25 text relevance with iterative PageRank authority. Sub-100ms query latency on millions of docs.', color:'from-[#FF6B35] to-[#FF1744]', glow:'rgba(255,107,53,0.15)' },
-  { icon:'📡', title:'Real-Time Updates', desc:'WebSocket-powered live crawl status, Redis autocomplete, and streaming search results. Watch your index grow live.', color:'from-[#00E676] to-[#00C6FF]', glow:'rgba(0,230,118,0.15)' },
-  { icon:'🔐', title:'Secure Auth', desc:'JWT sessions, bcrypt passwords, per-user API keys with sliding-window rate limiting. Enterprise-grade security.', color:'from-[#FFD600] to-[#FF6B35]', glow:'rgba(255,214,0,0.15)' },
-  { icon:'📬', title:'Smart Email Alerts', desc:'Resend-powered transactional emails. Contact form notifications go directly to your Gmail. Auto-replies to users.', color:'from-[#A855F7] to-[#7B2FBE]', glow:'rgba(168,85,247,0.15)' },
+  {icon:'🔍',t:'BM25 Full-Text Search',d:'Real inverted index with BM25 scoring. Search across all uploaded files with millisecond latency and highlighted excerpts.',c:'from-[#00C6FF] to-[#0080FF]'},
+  {icon:'⚡',t:'SQL Pattern Detection',d:'10 detection rules: SELECT *, missing WHERE, leading LIKE %, N+1 queries, OR vs IN, ORDER BY without LIMIT, and more.',c:'from-[#FF6B35] to-[#FF1744]'},
+  {icon:'📊',t:'Real Query Analytics',d:'Live KPI cards, category breakdown, top keywords, vocabulary richness, and query length statistics from your actual files.',c:'from-[#7B2FBE] to-[#A855F7]'},
+  {icon:'🎯',t:'Caching Opportunities',d:'Automatically detect duplicate and near-duplicate query patterns. Get exact counts and suggested Redis TTL strategies.',c:'from-[#00E676] to-[#00C6FF]'},
+  {icon:'📈',t:'Performance Insights',d:'HIGH/MEDIUM/LOW severity scoring for every slow pattern. Each issue shows a concrete fix with example SQL.',c:'from-[#FFD600] to-[#FF6B35]'},
+  {icon:'💾',t:'Persistent File History',d:'All uploaded files and analyses stored in session. Re-open any file\'s full report, delete when done.',c:'from-[#A855F7] to-[#7B2FBE]'},
 ]
 
-const HOW = [
-  { step:'01', icon:'🕷️', title:'Crawl', desc:'Add seed URLs. Our distributed crawler explores the web politely, following links and respecting robots.txt.' },
-  { step:'02', icon:'📁', title:'Index',  desc:'Raw HTML is tokenized, stemmed, and compressed into a positional inverted index with PageRank computation.' },
-  { step:'03', icon:'🔍', title:'Search', desc:'BM25+PageRank hybrid scoring delivers sub-second results with autocomplete, facets, and cached page preview.' },
-]
-
-const STATS = [
-  { value:'10M+', label:'Pages Indexed' },
-  { value:'<100ms', label:'Query Latency' },
-  { value:'99.9%', label:'Uptime SLA' },
-  { value:'2,400+', label:'Active Users' },
-]
-
-const TESTIMONIALS = [
-  { quote:'SmartQuery replaced our entire Elasticsearch setup. BM25+PageRank gives way better results out of the box.', name:'Arjun Sharma', role:'CTO at Devstack.io', avatar:'AS' },
-  { quote:'The crawler is incredibly polite and fast. We indexed 500k pages overnight without a single rate-limit issue.', name:'Priya Menon', role:'Lead Engineer at SearchLabs', avatar:'PM' },
-  { quote:'Admin email setup took 2 minutes. Our whole team gets crawl alerts directly in Gmail. Absolutely brilliant.', name:'Rahul Verma', role:'Solo Founder', avatar:'RV' },
-]
-
-export default function HomePage() {
-  const [query, setQuery] = useState('')
+export default function Home() {
+  const [q, setQ] = useState('')
   const [typingText, setTypingText] = useState('')
-  const [typingIdx, setTypingIdx] = useState(0)
-  const [deleting, setDeleting] = useState(false)
-  const [suggestions, setSuggestions] = useState<string[]>([])
-  const [showSugg, setShowSugg] = useState(false)
-  const [results, setResults] = useState<any[]>([])
+  const [tIdx, setTIdx] = useState(0)
+  const [del, setDel] = useState(false)
+  const [demo, setDemo] = useState<any[]>([])
   const [searching, setSearching] = useState(false)
-  const [statsVisible, setStatsVisible] = useState(false)
+  const [statsVis, setStatsVis] = useState(false)
   const statsRef = useRef<HTMLDivElement>(null)
 
-  // Typewriter
-  useEffect(() => {
-    const phrase = TYPING_PHRASES[typingIdx]
-    const speed = deleting ? 35 : 75
-    const t = setTimeout(() => {
-      if (!deleting && typingText.length < phrase.length) setTypingText(phrase.slice(0, typingText.length+1))
-      else if (deleting && typingText.length > 0) setTypingText(typingText.slice(0,-1))
-      else if (!deleting) setTimeout(() => setDeleting(true), 2200)
-      else { setDeleting(false); setTypingIdx((typingIdx+1) % TYPING_PHRASES.length) }
-    }, speed)
-    return () => clearTimeout(t)
-  }, [typingText, deleting, typingIdx])
+  useEffect(()=>{
+    const phrase = TYPING[tIdx]
+    const speed = del?35:70
+    const t = setTimeout(()=>{
+      if(!del&&typingText.length<phrase.length) setTypingText(phrase.slice(0,typingText.length+1))
+      else if(del&&typingText.length>0) setTypingText(typingText.slice(0,-1))
+      else if(!del) setTimeout(()=>setDel(true),2400)
+      else{setDel(false);setTIdx((tIdx+1)%TYPING.length)}
+    },speed)
+    return ()=>clearTimeout(t)
+  },[typingText,del,tIdx])
 
-  // Stats intersection
-  useEffect(() => {
-    const obs = new IntersectionObserver(([e]) => { if (e.isIntersecting) setStatsVisible(true) }, { threshold:0.3 })
-    if (statsRef.current) obs.observe(statsRef.current)
-    return () => obs.disconnect()
-  }, [])
+  useEffect(()=>{
+    const obs = new IntersectionObserver(([e])=>{if(e.isIntersecting)setStatsVis(true)},{threshold:0.3})
+    if(statsRef.current) obs.observe(statsRef.current)
+    return ()=>obs.disconnect()
+  },[])
 
-  const doSearch = async (e: React.FormEvent) => {
+  const doSearch = async(e: React.FormEvent)=>{
     e.preventDefault()
-    if (!query.trim()) return
-    setSearching(true); setShowSugg(false)
-    await new Promise(r => setTimeout(r, 500))
-    setResults([
-      { title:`${query} — Complete Developer Guide`, url:`docs.smartquery.io/guide`, snippet:`Learn everything about <mark>${query}</mark>. Covers fundamentals, advanced patterns, and production best practices.`, date:'2 days ago', score:'0.94' },
-      { title:`Understanding ${query}: A Deep Dive`, url:`blog.smartquery.io/deep-dive`, snippet:`We explore <mark>${query}</mark> from first principles with real benchmarks and code examples.`, date:'5 days ago', score:'0.87' },
-      { title:`${query} Performance Benchmarks 2025`, url:`research.smartquery.io/bench`, snippet:`Detailed analysis of <mark>${query}</mark> across different hardware configurations and load patterns.`, date:'1 week ago', score:'0.81' },
-    ])
+    if(!q.trim()) return
+    setSearching(true)
+    try{
+      const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`)
+      const data = await res.json()
+      setDemo(data.results||[])
+    }catch{}
     setSearching(false)
   }
 
-  const handleInput = (val: string) => {
-    setQuery(val)
-    if (val.length > 1) { setSuggestions([`${val} tutorial`,`${val} best practices`,`${val} examples`,`${val} guide`]); setShowSugg(true) }
-    else setShowSugg(false)
-  }
-
   return (
-    <>
-      <Toaster position="top-right" toastOptions={{ style:{background:'rgba(10,22,48,0.95)',color:'#E8F4FD',border:'1px solid rgba(0,198,255,0.3)',borderRadius:'12px',fontFamily:'Outfit,sans-serif'}, success:{iconTheme:{primary:'#00E676',secondary:'#050B18'}}, error:{iconTheme:{primary:'#FF1744',secondary:'#050B18'}} }} />
-      <Navbar />
-
-      {/* ── HERO ── */}
-      <section className="min-h-screen flex flex-col items-center justify-center pt-24 pb-16 px-6 relative overflow-hidden">
-        <div className="absolute top-1/4 left-1/5 w-80 h-80 rounded-full pointer-events-none opacity-20" style={{background:'radial-gradient(circle,#00C6FF,transparent)',animation:'float 8s ease-in-out infinite'}} />
-        <div className="absolute bottom-1/3 right-1/5 w-60 h-60 rounded-full pointer-events-none opacity-15" style={{background:'radial-gradient(circle,#7B2FBE,transparent)',animation:'float 11s ease-in-out infinite 2s'}} />
-
-        <div className="max-w-5xl mx-auto text-center relative z-10">
-          <div className="inline-flex items-center gap-2 badge badge-primary mb-6" style={{animation:'slideUpIn 0.5s ease both'}}>
-            <span className="w-1.5 h-1.5 rounded-full bg-[#00E676] animate-pulse" />
-            BM25 + PageRank hybrid ranking — now live
+    <div style={{minHeight:'100vh'}}>
+      {/* NAV */}
+      <nav className="nav" style={{position:'fixed',top:0,left:0,right:0,zIndex:50}}>
+        <div style={{maxWidth:1200,margin:'0 auto',padding:'0 24px',height:64,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+          <Link href="/" style={{display:'flex',alignItems:'center',gap:10,textDecoration:'none'}}>
+            <div style={{width:32,height:32,borderRadius:8,background:'linear-gradient(135deg,#00C6FF,#7B2FBE)',display:'flex',alignItems:'center',justifyContent:'center'}}>
+              <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="white" strokeWidth={2}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35" strokeLinecap="round"/></svg>
+            </div>
+            <span style={{fontFamily:'Syne',fontWeight:700,fontSize:18,color:'white'}}>Smart<span className="gtext-b">Query</span></span>
+          </Link>
+          <div style={{display:'flex',alignItems:'center',gap:24}}>
+            {[['Features','/#features'],['How It Works','/#how'],['Search','/search'],['Docs','/docs'],['Contact','/contact']].map(([l,h])=>(
+              <Link key={l} href={h} className="nl" style={{textDecoration:'none'}}>{l}</Link>
+            ))}
           </div>
+          <div style={{display:'flex',gap:12}}>
+            <Link href="/auth/login" className="btn-o" style={{padding:'8px 18px',borderRadius:8,textDecoration:'none',fontSize:14}}>Sign In</Link>
+            <Link href="/auth/signup" className="btn-p" style={{padding:'8px 18px',borderRadius:8,textDecoration:'none',fontSize:14}}><span>Get Started</span></Link>
+          </div>
+        </div>
+      </nav>
 
-          <h1 className="font-display font-extrabold text-5xl md:text-7xl leading-tight mb-6" style={{animation:'slideUpIn 0.6s ease 0.1s both'}}>
-            Search the Web.<br/><span className="gradient-text">Your Way.</span>
+      {/* HERO */}
+      <section style={{minHeight:'100vh',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'100px 24px 60px',textAlign:'center',position:'relative'}}>
+        <div style={{position:'absolute',top:'25%',left:'20%',width:280,height:280,borderRadius:'50%',background:'radial-gradient(circle,rgba(0,198,255,0.12),transparent)',animation:'float 9s ease-in-out infinite',pointerEvents:'none'}} />
+        <div style={{position:'absolute',bottom:'30%',right:'20%',width:220,height:220,borderRadius:'50%',background:'radial-gradient(circle,rgba(123,47,190,0.1),transparent)',animation:'float 12s ease-in-out infinite 2s',pointerEvents:'none'}} />
+        <div style={{maxWidth:900,position:'relative',zIndex:1}}>
+          <div className="badge bp" style={{marginBottom:24,fontSize:12}} >
+            <span style={{width:6,height:6,borderRadius:'50%',background:'#00E676',display:'inline-block',marginRight:6,animation:'pulse 2s infinite'}} />
+            Real BM25 search · SQL pattern detection · 10 optimization rules
+          </div>
+          <h1 style={{fontFamily:'Syne',fontWeight:800,fontSize:'clamp(40px,7vw,80px)',lineHeight:1.1,color:'white',marginBottom:20}}>
+            Analyze Queries.<br/><span className="gtext">Fix Performance.</span>
           </h1>
-
-          <p className="text-[#7A9CC0] text-xl max-w-2xl mx-auto mb-10 leading-relaxed" style={{animation:'slideUpIn 0.6s ease 0.2s both'}}>
-            Build a production-grade search engine — distributed crawler, compressed inverted index, sub-100ms queries, stunning real-time UI.
+          <p style={{color:'#7A9CC0',fontSize:20,maxWidth:600,margin:'0 auto 40px',lineHeight:1.7}}>
+            Upload any query log. Get real SQL optimization advice, BM25-powered search, duplicate detection, and actionable insights — instantly.
           </p>
-
-          <div className="flex flex-col sm:flex-row gap-4 justify-center mb-16" style={{animation:'slideUpIn 0.6s ease 0.3s both'}}>
-            <Link href="/auth/signup" className="btn-primary px-8 py-4 rounded-xl text-white font-semibold text-lg glow-primary">
-              <span>🚀 Start for Free</span>
-            </Link>
-            <Link href="/search" className="btn-outline px-8 py-4 rounded-xl text-lg font-semibold">
-              🔍 Try Live Demo
-            </Link>
+          <div style={{display:'flex',gap:16,justifyContent:'center',marginBottom:56}}>
+            <Link href="/auth/signup" className="btn-p" style={{padding:'16px 36px',borderRadius:12,fontSize:17,textDecoration:'none'}}><span>🚀 Start Analyzing Free</span></Link>
+            <Link href="/search" className="btn-o" style={{padding:'16px 36px',borderRadius:12,fontSize:17,textDecoration:'none'}}>🔍 Try Live Search</Link>
           </div>
-
-          {/* Live Search Demo */}
-          <div className="max-w-2xl mx-auto" style={{animation:'slideUpIn 0.6s ease 0.4s both'}}>
-            <form onSubmit={doSearch} className="relative">
-              <div className="search-bar rounded-2xl flex items-center px-5 py-3.5 gap-3">
-                <svg className="w-5 h-5 text-[#00C6FF] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35" strokeLinecap="round"/></svg>
-                <input type="text" value={query} onChange={e => handleInput(e.target.value)} onFocus={() => query.length>1 && setShowSugg(true)} onBlur={() => setTimeout(()=>setShowSugg(false),180)}
-                  placeholder={typingText + '|'}
-                  className="flex-1 bg-transparent text-[#E8F4FD] placeholder-[#7A9CC0] outline-none text-sm font-mono" />
-                <button type="submit" disabled={searching} className="btn-primary px-5 py-2 rounded-xl text-sm text-white font-semibold shrink-0 disabled:opacity-60">
-                  <span>{searching ? '...' : 'Search'}</span>
+          {/* Live search demo */}
+          <div style={{maxWidth:680,margin:'0 auto'}}>
+            <form onSubmit={doSearch} style={{position:'relative'}}>
+              <div className="sbar" style={{borderRadius:16,display:'flex',alignItems:'center',padding:'14px 20px',gap:12}}>
+                <svg style={{width:18,height:18,color:'#00C6FF',flexShrink:0}} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35" strokeLinecap="round"/></svg>
+                <input value={q} onChange={e=>setQ(e.target.value)} placeholder={typingText+'|'}
+                  style={{flex:1,background:'transparent',border:'none',outline:'none',color:'#E8F4FD',fontFamily:"'JetBrains Mono',monospace",fontSize:14,minWidth:0}} />
+                {q&&<button type="button" onClick={()=>{setQ('');setDemo([])}} style={{color:'#7A9CC0',border:'none',background:'none',fontSize:20,lineHeight:1}}>×</button>}
+                <button type="submit" disabled={searching} className="btn-p" style={{padding:'8px 20px',borderRadius:10,fontSize:13,flexShrink:0,opacity:searching?0.6:1}}>
+                  <span>{searching?'…':'Search'}</span>
                 </button>
               </div>
-              {showSugg && (
-                <div className="absolute top-full left-0 right-0 mt-2 glass rounded-xl overflow-hidden shadow-2xl z-20" style={{animation:'dropdownIn 0.2s ease both'}}>
-                  {suggestions.map((s,i) => (
-                    <button key={i} type="button" onClick={() => { setQuery(s); setShowSugg(false) }}
-                      className="w-full text-left px-5 py-3 text-sm text-[#7A9CC0] hover:text-white hover:bg-[rgba(0,198,255,0.08)] transition-all flex items-center gap-3">
-                      <svg className="w-3.5 h-3.5 text-[#00C6FF]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35" strokeLinecap="round"/></svg>
-                      {s}
-                    </button>
-                  ))}
-                </div>
-              )}
             </form>
-            {results.length>0 && (
-              <div className="mt-4 space-y-3 text-left">
-                {results.map((r,i) => (
-                  <div key={i} className="card p-4" style={{animation:`slideUpIn 0.4s ease ${i*0.07}s both`}}>
-                    <div className="flex items-start justify-between gap-3 mb-1">
-                      <a href="/search" className="font-display font-semibold text-[#00C6FF] hover:text-white transition-colors text-sm leading-snug">{r.title}</a>
-                      <span className="badge badge-primary text-xs shrink-0">Score: {r.score}</span>
+            {demo.length>0&&(
+              <div style={{marginTop:12,display:'flex',flexDirection:'column',gap:8}}>
+                {demo.map((r,i)=>(
+                  <div key={i} className="card" style={{padding:'14px 18px',textAlign:'left',animation:`slideUp 0.3s ease ${i*0.06}s both`}}>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
+                      <span style={{color:'#00C6FF',fontFamily:'Syne',fontWeight:600,fontSize:14}}>{r.fileName}</span>
+                      <span className="badge bp" style={{fontSize:11}}>BM25: {r.score}</span>
                     </div>
-                    <p className="text-[#7A9CC0] text-xs font-mono mb-1.5">{r.url}</p>
-                    <p className="text-[#7A9CC0] text-xs leading-relaxed" dangerouslySetInnerHTML={{__html:r.snippet}} />
-                    <p className="text-[#7A9CC0] text-xs mt-2 opacity-60">{r.date}</p>
+                    <p style={{color:'#7A9CC0',fontSize:12,lineHeight:1.6}} dangerouslySetInnerHTML={{__html:r.excerpt.substring(0,160)}} />
                   </div>
                 ))}
-                <div className="text-center pt-2">
-                  <Link href={`/search?q=${encodeURIComponent(query)}`} className="text-[#00C6FF] text-sm hover:text-white transition-colors">
-                    View all results →
-                  </Link>
-                </div>
+                <p style={{color:'#7A9CC0',fontSize:12,textAlign:'center'}}>Upload files first to get real search results</p>
               </div>
             )}
+            {!demo.length&&!searching&&<p style={{color:'#7A9CC0',fontSize:12,marginTop:10}}>Search indexes are built from your uploaded .txt files</p>}
           </div>
         </div>
       </section>
 
-      {/* ── STATS ── */}
-      <section className="py-14 px-6" ref={statsRef}>
-        <div className="max-w-4xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-5">
-          {STATS.map(s => (
-            <div key={s.label} className={`text-center card p-6 transition-all duration-700 ${statsVisible?'opacity-100 translate-y-0':'opacity-0 translate-y-4'}`}>
-              <div className="stat-value text-3xl md:text-4xl mb-2">{s.value}</div>
-              <div className="text-[#7A9CC0] text-sm">{s.label}</div>
+      {/* STATS */}
+      <section style={{padding:'0 24px 80px'}} ref={statsRef}>
+        <div style={{maxWidth:900,margin:'0 auto',display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:20}}>
+          {[['10+','Detection Rules'],['BM25','Ranking Engine'],['<50ms','Search Latency'],['0','External APIs']].map(([v,l])=>(
+            <div key={l} className="card" style={{padding:'24px 16px',textAlign:'center',transition:'all 0.7s',opacity:statsVis?1:0,transform:statsVis?'none':'translateY(16px)'}}>
+              <div style={{fontFamily:'Syne',fontWeight:800,fontSize:32,marginBottom:6,background:'linear-gradient(135deg,#00C6FF,#7B2FBE)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>{v}</div>
+              <div style={{color:'#7A9CC0',fontSize:13}}>{l}</div>
             </div>
           ))}
         </div>
       </section>
 
-      <div className="section-divider max-w-7xl mx-auto" />
-
-      {/* ── HOW IT WORKS ── */}
-      <section id="how" className="py-20 px-6">
-        <div className="max-w-6xl mx-auto">
-          <div className="text-center mb-14">
-            <span className="badge badge-primary mb-4">How It Works</span>
-            <h2 className="font-display font-bold text-4xl md:text-5xl text-white mb-3">Three Steps to Your Own Search Engine</h2>
-            <p className="text-[#7A9CC0] text-lg max-w-xl mx-auto">From seed URL to sub-second results in minutes.</p>
+      {/* HOW */}
+      <section id="how" style={{padding:'60px 24px 80px'}}>
+        <div style={{maxWidth:1100,margin:'0 auto'}}>
+          <div style={{textAlign:'center',marginBottom:56}}>
+            <div className="badge bp" style={{marginBottom:16}}>How It Works</div>
+            <h2 style={{fontFamily:'Syne',fontWeight:700,fontSize:'clamp(28px,4vw,48px)',color:'white',marginBottom:12}}>Three Steps to Faster Queries</h2>
           </div>
-          <div className="grid md:grid-cols-3 gap-6">
-            {HOW.map((step,i) => (
-              <div key={step.step} className="card p-8 relative overflow-hidden group">
-                <div className="absolute top-0 right-0 font-display font-extrabold text-8xl text-white/[0.03] leading-none select-none">{step.step}</div>
-                <div className="text-4xl mb-4">{step.icon}</div>
-                <span className="badge badge-primary mb-3 text-xs">Step {step.step}</span>
-                <h3 className="font-display font-bold text-xl text-white mb-3">{step.title}</h3>
-                <p className="text-[#7A9CC0] leading-relaxed text-sm">{step.desc}</p>
-                <div className="absolute bottom-0 left-0 h-0.5 bg-gradient-to-r from-[#00C6FF] to-transparent w-0 group-hover:w-full transition-all duration-500" />
+          <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:24}}>
+            {[{s:'01',icon:'📤',t:'Upload',d:'Drag & drop any .txt file with SQL queries, search logs, or API calls. Up to 10MB — thousands of queries at once.'},
+              {s:'02',icon:'🧠',t:'Analyze',d:'Real-time: inverted index built, 10 SQL rules applied, duplicates found, BM25 scored, categories assigned.'},
+              {s:'03',icon:'⚡',t:'Optimize',d:'View each slow pattern, click the fix, search across files instantly. Every insight is backed by real data from your file.'}
+            ].map(step=>(
+              <div key={step.s} className="card" style={{padding:32,position:'relative',overflow:'hidden'}}>
+                <div style={{position:'absolute',top:0,right:0,fontFamily:'Syne',fontWeight:800,fontSize:80,color:'rgba(255,255,255,0.03)',lineHeight:1}}>{step.s}</div>
+                <div style={{fontSize:36,marginBottom:14}}>{step.icon}</div>
+                <div className="badge bp" style={{marginBottom:12,fontSize:11}}>Step {step.s}</div>
+                <h3 style={{fontFamily:'Syne',fontWeight:700,fontSize:20,color:'white',marginBottom:10}}>{step.t}</h3>
+                <p style={{color:'#7A9CC0',fontSize:14,lineHeight:1.7}}>{step.d}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ── FEATURES ── */}
-      <section id="features" className="py-20 px-6">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-14">
-            <span className="badge badge-primary mb-4">Features</span>
-            <h2 className="font-display font-bold text-4xl md:text-5xl text-white mb-3">Everything a Search Engine Needs</h2>
-            <p className="text-[#7A9CC0] text-lg max-w-xl mx-auto">From the crawler to the query server — every component is production-grade.</p>
+      {/* FEATURES */}
+      <section id="features" style={{padding:'60px 24px 80px'}}>
+        <div style={{maxWidth:1100,margin:'0 auto'}}>
+          <div style={{textAlign:'center',marginBottom:56}}>
+            <div className="badge bp" style={{marginBottom:16}}>Features</div>
+            <h2 style={{fontFamily:'Syne',fontWeight:700,fontSize:'clamp(28px,4vw,48px)',color:'white',marginBottom:12}}>Real Functionality. Real Results.</h2>
+            <p style={{color:'#7A9CC0',fontSize:17,maxWidth:500,margin:'0 auto'}}>Every feature processes your actual uploaded data. Zero mockups.</p>
           </div>
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {FEATURES.map(f => (
-              <div key={f.title} className="card p-6 group relative overflow-hidden">
-                <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" style={{background:`radial-gradient(circle at 50% 0%,${f.glow},transparent 70%)`}} />
-                <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${f.color} flex items-center justify-center text-2xl mb-4 shadow-lg`}>{f.icon}</div>
-                <h3 className="font-display font-bold text-lg text-white mb-2">{f.title}</h3>
-                <p className="text-[#7A9CC0] text-sm leading-relaxed">{f.desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── CRAWLER TERMINAL ── */}
-      <section id="crawler" className="py-20 px-6">
-        <div className="max-w-6xl mx-auto grid md:grid-cols-2 gap-12 items-center">
-          <div>
-            <span className="badge badge-primary mb-4">Live Crawler</span>
-            <h2 className="font-display font-bold text-4xl text-white mb-4">Watch Your Index Grow in Real Time</h2>
-            <p className="text-[#7A9CC0] leading-relaxed mb-6">WebSocket-powered live crawl monitoring. Every page discovered, every link followed — streamed directly to your dashboard.</p>
-            <ul className="space-y-2.5">
-              {['Bloom filter deduplication','robots.txt compliance','Per-host politeness delay','Auto-pause on error spike'].map(item => (
-                <li key={item} className="flex items-center gap-3 text-[#7A9CC0] text-sm">
-                  <span className="w-5 h-5 rounded-full bg-[rgba(0,230,118,0.15)] border border-[rgba(0,230,118,0.3)] flex items-center justify-center text-[#00E676] text-xs">✓</span>
-                  {item}
-                </li>
-              ))}
-            </ul>
-            <div className="mt-6">
-              <Link href="/auth/signup" className="btn-primary px-6 py-3 rounded-xl text-white font-semibold inline-flex">
-                <span>Start Crawling Free</span>
-              </Link>
-            </div>
-          </div>
-          <div className="terminal scan-line-container">
-            <div className="terminal-header">
-              <div className="terminal-dot bg-red-500" /><div className="terminal-dot bg-yellow-400" /><div className="terminal-dot bg-green-500" />
-              <span className="text-[#7A9CC0] text-xs ml-3">crawler.log — live</span>
-              <span className="ml-auto w-2 h-2 rounded-full bg-[#00E676] animate-pulse" />
-            </div>
-            <div className="p-4 space-y-1.5 text-xs leading-relaxed h-72 overflow-hidden">
-              {[
-                ['12:34:01','text-[#7A9CC0]','Starting crawler — seed: docs.smartquery.io'],
-                ['12:34:02','text-[#00C6FF]','Fetching robots.txt → Allow: /'],
-                ['12:34:02','text-[#00E676]','✓ Indexed: /docs/bm25 (245 tokens)'],
-                ['12:34:03','text-[#00E676]','✓ Indexed: /docs/crawler (189 tokens)'],
-                ['12:34:03','text-[#7A9CC0]','Politeness delay: 1.2s for this host'],
-                ['12:34:04','text-[#00E676]','✓ Indexed: /blog/pagerank (302 tokens)'],
-                ['12:34:05','text-[#FFD600]','⚠ Skipping: /private (noindex meta)'],
-                ['12:34:05','text-[#00E676]','✓ Indexed: /docs/api (98 tokens)'],
-                ['12:34:06','text-[#00C6FF]','New domain: blog.smartquery.io → fetching robots'],
-                ['12:34:07','text-[#00E676]','✓ Indexed: /blog/distributed-search (441 tokens)'],
-                ['12:34:07','text-[#7A9CC0]','Pages: 47 | Errors: 0 | Queue: 312'],
-                ['12:34:08','text-[#00E676]','✓ Indexed: /blog/inverted-index (288 tokens)'],
-              ].map(([t,c,m],i) => (
-                <div key={i} className="flex gap-3" style={{animation:`fadeInLine 0.3s ease ${i*0.14}s both`}}>
-                  <span className="text-[#7A9CC0] shrink-0">[{t}]</span>
-                  <span className={c}>{m}</span>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:20}}>
+            {FEATURES.map(f=>(
+              <div key={f.t} className="card" style={{padding:24,position:'relative',overflow:'hidden'}}>
+                <div style={{width:48,height:48,borderRadius:12,background:`linear-gradient(135deg,${f.c.includes('to')? f.c.split('to-')[1].replace('[','').replace(']',''):f.c} 0%, #050B18 100%)`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:22,marginBottom:14,border:'1px solid rgba(0,198,255,0.2)'}}>
+                  {f.icon}
                 </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── TESTIMONIALS ── */}
-      <section id="testimonials" className="py-20 px-6">
-        <div className="max-w-6xl mx-auto">
-          <div className="text-center mb-12">
-            <h2 className="font-display font-bold text-4xl text-white mb-3">Loved by Developers</h2>
-          </div>
-          <div className="grid md:grid-cols-3 gap-5">
-            {TESTIMONIALS.map((t,i) => (
-              <div key={i} className="card p-6">
-                <div className="flex mb-3">{[...Array(5)].map((_,j) => <span key={j} className="text-[#FFD600] text-sm">★</span>)}</div>
-                <p className="text-[#7A9CC0] text-sm leading-relaxed mb-5 italic">"{t.quote}"</p>
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#00C6FF] to-[#7B2FBE] flex items-center justify-center text-white text-xs font-bold font-display">{t.avatar}</div>
-                  <div><div className="text-white text-sm font-semibold font-display">{t.name}</div><div className="text-[#7A9CC0] text-xs">{t.role}</div></div>
-                </div>
+                <h3 style={{fontFamily:'Syne',fontWeight:700,fontSize:16,color:'white',marginBottom:8}}>{f.t}</h3>
+                <p style={{color:'#7A9CC0',fontSize:13,lineHeight:1.7}}>{f.d}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ── CTA ── */}
-      <section id="about" className="py-20 px-6">
-        <div className="max-w-4xl mx-auto text-center">
-          <div className="card p-12 relative overflow-hidden">
-            <div className="absolute inset-0 bg-gradient-to-br from-[rgba(0,198,255,0.05)] to-[rgba(123,47,190,0.05)]" />
-            <div className="relative z-10">
-              <h2 className="font-display font-extrabold text-4xl md:text-5xl text-white mb-4">
-                Ready to Build Your<br/><span className="gradient-text">Search Engine?</span>
+      {/* CTA */}
+      <section style={{padding:'60px 24px 100px'}}>
+        <div style={{maxWidth:800,margin:'0 auto'}}>
+          <div className="card" style={{padding:64,textAlign:'center',position:'relative',overflow:'hidden'}}>
+            <div style={{position:'absolute',inset:0,background:'linear-gradient(135deg,rgba(0,198,255,0.04),rgba(123,47,190,0.04))'}} />
+            <div style={{position:'relative',zIndex:1}}>
+              <h2 style={{fontFamily:'Syne',fontWeight:800,fontSize:'clamp(28px,4vw,52px)',color:'white',marginBottom:14}}>
+                Ready to Optimize?<br/><span className="gtext">Upload Your First File.</span>
               </h2>
-              <p className="text-[#7A9CC0] text-lg mb-8 max-w-xl mx-auto">Start free. No credit card. Index your first pages today.</p>
-              <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                <Link href="/auth/signup" className="btn-primary px-8 py-4 rounded-xl text-white font-semibold text-lg"><span>🚀 Get Started Free</span></Link>
-                <Link href="/docs" className="btn-outline px-8 py-4 rounded-xl text-lg font-semibold">Read the Docs</Link>
+              <p style={{color:'#7A9CC0',fontSize:17,marginBottom:36}}>No credit card. No setup. Just upload and get insights.</p>
+              <div style={{display:'flex',gap:16,justifyContent:'center'}}>
+                <Link href="/auth/signup" className="btn-p" style={{padding:'16px 36px',borderRadius:12,fontSize:16,textDecoration:'none'}}><span>🚀 Get Started Free</span></Link>
+                <Link href="/docs" className="btn-o" style={{padding:'16px 36px',borderRadius:12,fontSize:16,textDecoration:'none'}}>Read the Docs</Link>
               </div>
             </div>
           </div>
         </div>
       </section>
 
-      <Footer />
-    </>
+      {/* FOOTER */}
+      <footer style={{borderTop:'1px solid rgba(0,198,255,0.1)',padding:'40px 24px'}}>
+        <div style={{maxWidth:1100,margin:'0 auto',display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:16}}>
+          <span style={{fontFamily:'Syne',fontWeight:700,color:'white',fontSize:16}}>Smart<span className="gtext-b">Query</span></span>
+          <div style={{display:'flex',gap:24}}>
+            {[['Search','/search'],['Contact','/contact'],['Privacy','/privacy'],['Terms','/terms'],['Docs','/docs']].map(([l,h])=>(
+              <Link key={l} href={h} style={{color:'#7A9CC0',textDecoration:'none',fontSize:13,transition:'color 0.2s'}} onMouseOver={e=>(e.currentTarget.style.color='#00C6FF')} onMouseOut={e=>(e.currentTarget.style.color='#7A9CC0')}>{l}</Link>
+            ))}
+          </div>
+          <p style={{color:'#7A9CC0',fontSize:13}}>© 2025 SmartQuery Optimizer</p>
+        </div>
+      </footer>
+    </div>
   )
 }
