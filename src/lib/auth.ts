@@ -1,10 +1,23 @@
-import jwt from 'jsonwebtoken'
+import { SignJWT, jwtVerify } from 'jose'
 
-const SECRET = process.env.JWT_SECRET || 'smartquery-dev-secret-2025'
+const SECRET = new TextEncoder().encode(
+  process.env.JWT_SECRET || 'smartquery-dev-secret-2025'
+)
 
-export interface SessionUser { userId: string; email: string; name: string; plan: string }
+export interface SessionUser {
+  userId: string; email: string; name: string; plan: string
+}
 
-export function signToken(p: SessionUser) { return jwt.sign(p, SECRET, { expiresIn: '7d' }) }
-export function verifyToken(t: string): SessionUser|null {
-  try { return jwt.verify(t, SECRET) as SessionUser } catch { return null }
+export async function signToken(p: SessionUser): Promise<string> {
+  return new SignJWT({ ...p })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setExpirationTime('7d')
+    .sign(SECRET)
+}
+
+export async function verifyToken(t: string): Promise<SessionUser | null> {
+  try {
+    const { payload } = await jwtVerify(t, SECRET)
+    return payload as unknown as SessionUser
+  } catch { return null }
 }

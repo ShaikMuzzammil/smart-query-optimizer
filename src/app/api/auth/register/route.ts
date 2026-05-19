@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
       resend.emails.send({from:`SmartQuery <${from}>`,to:email,subject:'Welcome to SmartQuery Optimizer',html:`<p style="font-family:Arial">Hi <strong>${name}</strong>, your account is ready! <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard">Open Dashboard</a></p>`}).catch(()=>{})
       if (process.env.ADMIN_EMAIL) resend.emails.send({from:`SmartQuery <${from}>`,to:process.env.ADMIN_EMAIL,subject:`New signup: ${name}`,html:`<p>${name} (${email}) just signed up.</p>`}).catch(()=>{})
     }
-    const token = signToken({userId:user.id,email:user.email,name:user.name,plan:user.plan})
+    const token = await signToken({userId:user.id,email:user.email,name:user.name,plan:user.plan})
     const res = NextResponse.json({ok:true,user:{id:user.id,name:user.name,email:user.email,plan:user.plan}},{status:201})
     res.cookies.set('sq_token',token,{httpOnly:true,secure:process.env.NODE_ENV==='production',sameSite:'lax',maxAge:60*60*24*7,path:'/'})
     return res
