@@ -33,7 +33,7 @@ export default function Login() {
         </div>
         <div className="card" style={{padding:32}}>
           {err&&<div style={{background:'rgba(255,23,68,0.1)',border:'1px solid rgba(255,23,68,0.3)',borderRadius:8,padding:'10px 14px',color:'#FF1744',fontSize:13,marginBottom:16}}>{err}</div>}
-          <div style={{background:'rgba(0,198,255,0.06)',border:'1px solid rgba(0,198,255,0.15)',borderRadius:8,padding:'10px 14px',color:'#7A9CC0',fontSize:12,marginBottom:20'}}>
+          <div style={{background:'rgba(0,198,255,0.06)',border:'1px solid rgba(0,198,255,0.15)',borderRadius:8,padding:'10px 14px',color:'#7A9CC0',fontSize:12,marginBottom:20}}>
             💡 Sign up first if you don&apos;t have an account yet.
           </div>
           <form onSubmit={handleSubmit} style={{display:'flex',flexDirection:'column',gap:16}}>
