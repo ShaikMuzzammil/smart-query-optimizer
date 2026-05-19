@@ -728,7 +728,7 @@ what is transformer architecture`}</pre>
                   {[['alpha','BM25 Weight (α)','0.7'],['bm25K1','k1 (term saturation)','1.5'],['bm25B','b (length norm)','0.75']].map(([k,l,_])=>(
                     <div key={k}>
                       <label style={{display:'block',color:'#7A9CC0',fontSize:11,fontWeight:500,marginBottom:5}}>{l}</label>
-                      <input type="number" step="0.05" value={settings[k as keyof typeof settings]} onChange={e=>setSettings(p=>({...p,[k]:e.target.value}))} className="inp" style={{width:'100%',padding:'10px 14px',borderRadius:9,fontSize:13,fontFamily:'JetBrains Mono'}}/>
+                      <input type="number" step="0.05" value={String(settings[k as keyof typeof settings])} onChange={e=>setSettings(p=>({...p,[k]:e.target.value}))} className="inp" style={{width:'100%',padding:'10px 14px',borderRadius:9,fontSize:13,fontFamily:'JetBrains Mono'}}/>
                     </div>
                   ))}
                 </div>
