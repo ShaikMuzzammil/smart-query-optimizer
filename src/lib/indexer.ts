@@ -278,7 +278,7 @@ export function getStats() {
   const totalWords = files.reduce((s,f) => s+f.wordCount, 0)
   const totalSearches = searchLog.length
   return {
-    totalFiles: files.size || files.length,
+    totalFiles: files.length,
     totalWords,
     totalSearches,
     indexSize: invertedIndex.size,
