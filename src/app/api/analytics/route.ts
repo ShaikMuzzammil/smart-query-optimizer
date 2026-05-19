@@ -15,7 +15,7 @@ export async function GET() {
   const allKeywords = new Map<string,number>()
   files.forEach(f=>f.topKeywords.forEach(k=>allKeywords.set(k.word,(allKeywords.get(k.word)||0)+k.freq)))
   const topKeywords = Array.from(allKeywords.entries()).sort((a,b)=>b[1]-a[1]).slice(0,15).map(([word,freq])=>({word,freq}))
-  const allSuggestions = [...new Set(files.flatMap(f=>f.suggestions))].slice(0,8)
+  const allSuggestions = Array.from(new Set(files.flatMap(f=>f.suggestions))).slice(0,8)
   const recentLogs = logs.slice(-20).reverse().map(l=>({
     query:l.query, latencyMs:l.latencyMs, success:l.success, ts:l.ts, category:l.category
   }))
