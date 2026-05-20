@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import './globals.css'
+import { Toaster } from 'sonner'
 
 export const metadata: Metadata = {
   title: 'SmartQuery Optimizer — Real Query Analytics',
@@ -84,6 +85,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         `}} />
       </head>
       <body>
+        <Toaster theme="dark" richColors position="top-right" />
         <div id="cursor-outer" />
         <div id="cursor-dot" />
         <div className="bg-anim" aria-hidden="true" />

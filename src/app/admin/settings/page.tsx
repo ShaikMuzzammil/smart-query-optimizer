@@ -1,6 +1,5 @@
 'use client'
 import { useState } from 'react'
-import toast from 'react-hot-toast'
 import Link from 'next/link'
 
 const TABS = ['Email', 'Crawler', 'Ranking', 'Security', 'Billing']
@@ -44,12 +43,12 @@ export default function AdminSettingsPage() {
         body: JSON.stringify({ emailSettings, crawlerSettings, rankingSettings }),
       })
       if (res.ok) {
-        toast.success('Settings saved successfully!')
+        alert('Settings saved successfully!')
       } else {
         throw new Error('Save failed')
       }
     } catch {
-      toast.error('Failed to save settings.')
+      alert('Failed to save settings.')
     } finally {
       setSaving(false)
     }
@@ -57,12 +56,12 @@ export default function AdminSettingsPage() {
 
   const handleTestEmail = async () => {
     if (!emailSettings.resendApiKey || !emailSettings.adminEmail) {
-      toast.error('Fill in Resend API Key and Admin Email first.')
+      alert('Fill in Resend API Key and Admin Email first.')
       return
     }
     setTestingEmail(true)
     await new Promise(r => setTimeout(r, 1200))
-    toast.success(`Test email sent to ${emailSettings.adminEmail}!`)
+    alert(`Test email sent to ${emailSettings.adminEmail}!`)
     setTestingEmail(false)
   }
 
@@ -337,7 +336,7 @@ export default function AdminSettingsPage() {
                 <div className="p-4 rounded-xl bg-[rgba(255,23,68,0.05)] border border-[rgba(255,23,68,0.2)]">
                   <p className="text-[#FF1744] font-semibold text-sm mb-1">⚠️ Danger Zone</p>
                   <p className="text-[#7A9CC0] text-xs mb-3">These actions are irreversible.</p>
-                  <button onClick={() => toast.error('Action not available in demo mode.')}
+                  <button onClick={() => alert('Action not available in demo mode.')}
                     className="px-4 py-2 rounded-lg text-sm font-semibold border border-[rgba(255,23,68,0.4)] text-[#FF1744] hover:bg-[rgba(255,23,68,0.08)] transition-all">
                     🗑️ Purge All Indices
                   </button>
