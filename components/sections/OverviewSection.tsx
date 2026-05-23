@@ -1,6 +1,6 @@
 'use client';
 
-import { useApp } from '@/lib/store';
+import { useApp } from '../../lib/store';
 import {
   Search, FileText, AlertTriangle, Database, TrendingUp,
   Upload, Activity, Clock, BarChart2, BookOpen

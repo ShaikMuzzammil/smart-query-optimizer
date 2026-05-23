@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useCallback, useRef } from 'react';
-import { useApp } from '@/lib/store';
-import { searchFiles, SEARCH_FILTERS, SearchResult } from '@/lib/engine';
+import { useApp } from '../../lib/store';
+import { searchFiles, SEARCH_FILTERS, SearchResult } from '../../lib/engine';
 import {
   Search, Filter, X, FileText, ChevronDown, ChevronUp,
   Clock, Eye, Zap, Upload

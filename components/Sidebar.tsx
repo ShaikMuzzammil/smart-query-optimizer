@@ -1,6 +1,6 @@
 'use client';
 
-import { useApp } from '@/lib/store';
+import { useApp } from '../lib/store';
 import { Trash2, FileText, ChevronRight, HardDrive } from 'lucide-react';
 
 export function Sidebar() {

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { useApp } from '@/lib/store';
+import { useApp } from '../../lib/store';
 import { BarChart2, Upload } from 'lucide-react';
 
 function BarChartCanvas({

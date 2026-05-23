@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useApp } from '@/lib/store';
+import { useApp } from '../lib/store';
 import {
   LayoutDashboard, Upload, FolderOpen, Search, BarChart2,
   Settings, LogOut, Bell, Menu, X, Database

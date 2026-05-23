@@ -1,9 +1,9 @@
 'use client';
 
 import { useCallback, useRef, useState } from 'react';
-import { useApp } from '@/lib/store';
+import { useApp } from '../../lib/store';
 import { Upload, FileText, CheckCircle, AlertTriangle, X, Plus, Zap } from 'lucide-react';
-import { analyzeFile, AnalyzedFile } from '@/lib/engine';
+import { analyzeFile, AnalyzedFile } from '../../lib/engine';
 
 interface PreviewResult {
   file: File;

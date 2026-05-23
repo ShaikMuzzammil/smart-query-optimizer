@@ -1,9 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useApp } from '@/lib/store';
+import { useApp } from '../lib/store';
 import { CheckCircle, AlertCircle, AlertTriangle, Info, X } from 'lucide-react';
-import { Notification } from '@/lib/engine';
+import { Notification } from '../lib/engine';
 
 interface Toast extends Notification {
   visible: boolean;

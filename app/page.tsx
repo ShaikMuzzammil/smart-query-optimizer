@@ -1,16 +1,16 @@
 'use client';
 
-import { useApp } from '@/lib/store';
-import { TopBar } from '@/components/TopBar';
-import { Sidebar } from '@/components/Sidebar';
-import { NotificationToasts } from '@/components/NotificationToasts';
-import { HomeSection } from '@/components/sections/HomeSection';
-import { OverviewSection } from '@/components/sections/OverviewSection';
-import { UploadSection } from '@/components/sections/UploadSection';
-import { FilesSection } from '@/components/sections/FilesSection';
-import { SearchSection } from '@/components/sections/SearchSection';
-import { AnalyticsSection } from '@/components/sections/AnalyticsSection';
-import { SettingsSection } from '@/components/sections/SettingsSection';
+import { useApp } from '../lib/store';
+import { TopBar } from '../components/TopBar';
+import { Sidebar } from '../components/Sidebar';
+import { NotificationToasts } from '../components/NotificationToasts';
+import { HomeSection } from '../components/sections/HomeSection';
+import { OverviewSection } from '../components/sections/OverviewSection';
+import { UploadSection } from '../components/sections/UploadSection';
+import { FilesSection } from '../components/sections/FilesSection';
+import { SearchSection } from '../components/sections/SearchSection';
+import { AnalyticsSection } from '../components/sections/AnalyticsSection';
+import { SettingsSection } from '../components/sections/SettingsSection';
 
 export default function Page() {
   const { state } = useApp();

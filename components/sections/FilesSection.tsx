@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { useApp } from '@/lib/store';
-import { AnalyzedFile } from '@/lib/engine';
+import { useApp } from '../../lib/store';
+import { AnalyzedFile } from '../../lib/engine';
 import {
   FileText, Trash2, Eye, AlertTriangle, TrendingUp, Search,
   X, ChevronDown, ChevronUp, Upload, BookOpen

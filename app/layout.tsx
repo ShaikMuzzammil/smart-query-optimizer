@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
-import { AppProvider } from '@/lib/store';
+import { AppProvider } from '../lib/store';
 
 export const metadata: Metadata = {
   title: 'SmartQuery Optimizer — Advanced Text Intelligence Platform',

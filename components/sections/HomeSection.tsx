@@ -1,6 +1,6 @@
 'use client';
 
-import { useApp } from '@/lib/store';
+import { useApp } from '../../lib/store';
 import {
   Search, Upload, BarChart2, Shield, Zap, Brain, FileText,
   ArrowRight, Database, Activity, Globe
