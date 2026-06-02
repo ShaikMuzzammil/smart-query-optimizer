@@ -1,312 +1,245 @@
 'use client';
+// components/sections/SettingsSection.tsx
+import React, { useState } from 'react';
+import { useApp } from '../../lib/AppContext';
+import { formatBytes } from '../../lib/analyzer';
+import type { AppSettings } from '../../lib/types';
 
-import { useApp } from '../../lib/store';
-import {
-  Trash2, Download, ToggleLeft, Search, FileText,
-  Bell, Volume2, Eye, Database, Sliders, RefreshCw
-} from 'lucide-react';
-
-function SettingRow({
-  icon: Icon, title, description, children, danger = false,
-}: {
-  icon: React.ElementType; title: string; description: string; children: React.ReactNode; danger?: boolean;
-}) {
+function Toggle({ on, onChange, label, desc }: { on: boolean; onChange: () => void; label: string; desc?: string }) {
   return (
-    <div className="flex items-start justify-between gap-4 py-4 border-b"
-      style={{ borderColor: 'rgba(30,58,95,0.3)' }}>
-      <div className="flex items-start gap-3">
-        <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5"
-          style={{
-            background: danger ? 'rgba(244,63,94,0.1)' : 'rgba(30,58,95,0.4)',
-            border: `1px solid ${danger ? 'rgba(244,63,94,0.3)' : 'rgba(30,58,95,0.6)'}`,
-          }}>
-          <Icon className="w-4 h-4" style={{ color: danger ? '#f43f5e' : 'var(--text-secondary)' }} />
-        </div>
-        <div>
-          <div className="font-semibold text-sm" style={{ color: danger ? '#f43f5e' : 'var(--text-primary)' }}>{title}</div>
-          <div className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{description}</div>
-        </div>
+    <div className="toggle-wrap" style={{ padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+      <div>
+        <div style={{ fontSize: 13.5, color: 'var(--text)', fontWeight: 500, marginBottom: desc ? 2 : 0 }}>{label}</div>
+        {desc && <div style={{ fontSize: 11.5, color: 'var(--text3)' }}>{desc}</div>}
       </div>
-      <div className="flex-shrink-0">{children}</div>
+      <div className={`toggle ${on ? 'on' : ''}`} onClick={onChange} role="switch" aria-checked={on}>
+        <div className="toggle-thumb" />
+      </div>
     </div>
   );
 }
 
-function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
+function Section({ title, icon, children }: { title: string; icon: string; children: React.ReactNode }) {
   return (
-    <button className={`toggle ${on ? 'on' : ''}`} onClick={onToggle} />
+    <div className="card" style={{ padding: '18px 22px', marginBottom: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+        <div className="section-icon" style={{ width: 30, height: 30, fontSize: 14 }}>{icon}</div>
+        <div style={{ fontFamily: 'Syne', fontWeight: 700, fontSize: 15, color: 'var(--text)' }}>{title}</div>
+      </div>
+      {children}
+    </div>
   );
 }
 
-export function SettingsSection() {
-  const { state, dispatch, doExport, navigateTo } = useApp();
-  const { settings, files, totalQueries, searchHistory } = state;
+export default function SettingsSection() {
+  const { state, dispatch, addNotification, navigate } = useApp();
+  const { settings, files, searchHistory, totalQueries } = state;
+  const [showConfirmClear, setShowConfirmClear] = useState(false);
 
-  const update = (patch: Partial<typeof settings>) =>
-    dispatch({ type: 'UPDATE_SETTINGS', payload: patch });
+  const update = (patch: Partial<AppSettings>) => dispatch({ type: 'UPDATE_SETTINGS', settings: patch });
 
-  const handleClearAll = () => {
-    if (window.confirm('Clear all indexed files, metrics, and search history? This cannot be undone.')) {
-      dispatch({ type: 'CLEAR_ALL' });
-      dispatch({ type: 'ADD_NOTIFICATION', payload: { type: 'info', title: 'Session Cleared', message: 'All data has been reset.' } });
-    }
+  const exportSession = () => {
+    const data = {
+      exported: new Date().toISOString(),
+      version: '3.0',
+      metrics: {
+        totalFiles: files.length,
+        totalWords: files.reduce((s, f) => s + f.analysis.wordCount, 0),
+        totalQueries,
+        totalSearchHistory: searchHistory.length,
+      },
+      settings,
+      files: files.map(f => ({
+        name: f.name, size: formatBytes(f.size), uploadedAt: new Date(f.uploadedAt).toISOString(),
+        queryCount: f.queryCount, tags: f.tags,
+        analysis: {
+          wordCount: f.analysis.wordCount, uniqueWordCount: f.analysis.uniqueWordCount,
+          lineCount: f.analysis.lineCount, charCount: f.analysis.charCount,
+          sentenceCount: f.analysis.sentenceCount, lexicalDensity: f.analysis.lexicalDensity,
+          readability: f.analysis.readability, sentiment: f.analysis.sentiment,
+          issueCount: f.analysis.issues.length, issueTotal: f.analysis.issues.reduce((s, i) => s + i.count, 0),
+          topWords: f.analysis.topWords.slice(0, 10),
+        },
+      })),
+      searchHistory: searchHistory.slice(0, 50),
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = `smartquery-session-${Date.now()}.json`; a.click();
+    URL.revokeObjectURL(url);
+    addNotification('success', 'Session Exported', 'Full session data downloaded as JSON.');
   };
 
-  const sessionSize = JSON.stringify(state.files).length;
+  const exportCSV = () => {
+    const headers = ['Name', 'Size', 'Words', 'Unique Words', 'Lines', 'Chars', 'Sentences', 'Readability Score', 'Readability Level', 'Sentiment', 'Sentiment Score', 'Issues', 'Lexical Density', 'Queries'];
+    const rows = files.map(f => [
+      f.name, formatBytes(f.size), f.analysis.wordCount, f.analysis.uniqueWordCount,
+      f.analysis.lineCount, f.analysis.charCount, f.analysis.sentenceCount,
+      f.analysis.readability.score, f.analysis.readability.level,
+      f.analysis.sentiment.label, f.analysis.sentiment.score,
+      f.analysis.issues.reduce((s, i) => s + i.count, 0),
+      f.analysis.lexicalDensity + '%', f.queryCount,
+    ]);
+    const csv = [headers, ...rows].map(r => r.map(c => `"${c}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = `smartquery-files-${Date.now()}.csv`; a.click();
+    URL.revokeObjectURL(url);
+    addNotification('success', 'CSV Exported', `${files.length} files exported as CSV.`);
+  };
+
+  const clearSession = () => {
+    dispatch({ type: 'CLEAR_SESSION' });
+    try { sessionStorage.clear(); } catch {}
+    setShowConfirmClear(false);
+    addNotification('info', 'Session Cleared', 'All files and history have been reset.');
+  };
 
   return (
-    <div className="space-y-8">
-      {/* Header */}
-      <div>
-        <div className="section-subtitle mb-1">Configuration</div>
-        <h1 className="section-title">Settings</h1>
-        <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
-          Customize analysis behaviour, search defaults, and session management.
-        </p>
+    <div>
+      <div className="section-header">
+        <div>
+          <div className="section-title"><span className="section-icon">⚙</span> Settings</div>
+          <div className="section-subtitle">Customize analysis behavior, search defaults, and session management</div>
+        </div>
       </div>
 
-      {/* Session overview card */}
-      <div className="glass-card p-5">
-        <div className="flex items-center gap-2 mb-4">
-          <Database className="w-4 h-4" style={{ color: '#06b6d4' }} />
-          <h3 className="font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--text-primary)' }}>
-            Current Session
-          </h3>
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {[
-            { label: 'Files Indexed', val: files.length, c: '#06b6d4' },
-            { label: 'Total Queries', val: totalQueries, c: '#f59e0b' },
-            { label: 'Search History', val: searchHistory.length, c: '#8b5cf6' },
-            { label: 'Session Data', val: `${(sessionSize/1024).toFixed(1)}KB`, c: '#10b981' },
-          ].map(s => (
-            <div key={s.label} className="text-center p-3 rounded-lg"
-              style={{ background: 'rgba(13,21,32,0.6)', border: '1px solid rgba(30,58,95,0.4)' }}>
-              <div className="mono text-xl font-bold" style={{ color: s.c, fontFamily: 'var(--font-mono)' }}>{s.val}</div>
-              <div className="text-xs mt-1" style={{ color: 'var(--text-muted)', fontSize: '0.62rem' }}>{s.label}</div>
+      <div className="grid-2" style={{ gap: 16 }}>
+        {/* Left column */}
+        <div>
+          {/* Analysis settings */}
+          <Section title="Analysis Options" icon="◈">
+            <Toggle on={settings.filterStopwords} onChange={() => update({ filterStopwords: !settings.filterStopwords })} label="Filter Stopwords" desc="Exclude common words (the, a, is…) from index terms and word frequency" />
+            <Toggle on={settings.showReadability} onChange={() => update({ showReadability: !settings.showReadability })} label="Show Readability Scores" desc="Compute Flesch-Kincaid readability for each uploaded file" />
+            <Toggle on={settings.showSentiment} onChange={() => update({ showSentiment: !settings.showSentiment })} label="Show Sentiment Analysis" desc="Detect positive/negative language patterns" />
+            <Toggle on={settings.showBigrams} onChange={() => update({ showBigrams: !settings.showBigrams })} label="Show Bigrams" desc="Extract frequent two-word phrases from files" />
+            <div style={{ paddingTop: 12 }}>
+              <label className="label">Minimum Word Length</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <input className="input" type="range" min={1} max={6} value={settings.minWordLength} onChange={e => update({ minWordLength: Number(e.target.value) })} style={{ flex: 1, accentColor: 'var(--accent)' }} />
+                <span style={{ fontFamily: 'JetBrains Mono', color: 'var(--accent)', fontSize: 14, fontWeight: 700, width: 24, textAlign: 'center' }}>{settings.minWordLength}</span>
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>Minimum character length for words to be indexed</div>
             </div>
-          ))}
+          </Section>
+
+          {/* Search settings */}
+          <Section title="Search Defaults" icon="⌕">
+            <Toggle on={settings.caseSensitiveSearch} onChange={() => update({ caseSensitiveSearch: !settings.caseSensitiveSearch })} label="Case Sensitive by Default" desc="New searches will match exact letter case" />
+            <Toggle on={settings.autoSearch} onChange={() => update({ autoSearch: !settings.autoSearch })} label="Auto-Search as You Type" desc="Run search automatically while typing (400ms debounce)" />
+          </Section>
+
+          {/* UI settings */}
+          <Section title="Interface" icon="◉">
+            <Toggle on={settings.animationsEnabled} onChange={() => update({ animationsEnabled: !settings.animationsEnabled })} label="Enable Animations" desc="Fade-in transitions, hover effects, and particle canvas" />
+            <Toggle on={settings.notificationsEnabled} onChange={() => update({ notificationsEnabled: !settings.notificationsEnabled })} label="Enable Notifications" desc="Show toast notifications for uploads, searches, and errors" />
+            <Toggle on={settings.compactMode} onChange={() => update({ compactMode: !settings.compactMode })} label="Compact Mode" desc="Reduce padding and spacing throughout the interface" />
+            <Toggle on={settings.keyboardShortcuts} onChange={() => update({ keyboardShortcuts: !settings.keyboardShortcuts })} label="Keyboard Shortcuts" desc="Ctrl+1–7 to navigate between sections" />
+          </Section>
         </div>
-      </div>
 
-      {/* Analysis Settings */}
-      <div className="glass-card p-6">
-        <div className="flex items-center gap-2 mb-2">
-          <Sliders className="w-4 h-4" style={{ color: '#f59e0b' }} />
-          <h3 className="font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--text-primary)' }}>
-            Analysis Settings
-          </h3>
-        </div>
-        <p className="text-xs mb-4" style={{ color: 'var(--text-muted)' }}>Controls how files are indexed and metrics are computed.</p>
+        {/* Right column */}
+        <div>
+          {/* File limits */}
+          <Section title="File Limits" icon="▦">
+            <div style={{ marginBottom: 14 }}>
+              <label className="label">Max File Size</label>
+              <select className="input" value={settings.maxFileSizeMB} onChange={e => update({ maxFileSizeMB: Number(e.target.value) })}>
+                <option value={1}>1 MB</option>
+                <option value={5}>5 MB</option>
+                <option value={10}>10 MB</option>
+                <option value={25}>25 MB</option>
+                <option value={50}>50 MB</option>
+              </select>
+              <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>Maximum size per uploaded file. Current: {settings.maxFileSizeMB}MB</div>
+            </div>
+            <div style={{ marginBottom: 14 }}>
+              <label className="label">Accent Color</label>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {['#00ff9d', '#00c8ff', '#a78bfa', '#f59e0b', '#ff6b9d', '#4ecdc4'].map(c => (
+                  <div key={c} onClick={() => update({ accentColor: c })} style={{ width: 28, height: 28, borderRadius: '50%', background: c, cursor: 'pointer', border: settings.accentColor === c ? `3px solid white` : '3px solid transparent', transition: 'border 0.2s', boxShadow: settings.accentColor === c ? `0 0 10px ${c}` : 'none' }} />
+                ))}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 6 }}>Visual accent color (applied on next load)</div>
+            </div>
+          </Section>
 
-        <SettingRow icon={ToggleLeft} title="Filter Stopwords" description="Exclude common words (a, the, and, etc.) from Index Terms count and Analytics charts.">
-          <Toggle on={settings.stopwordsEnabled} onToggle={() => update({ stopwordsEnabled: !settings.stopwordsEnabled })} />
-        </SettingRow>
+          {/* Export */}
+          <Section title="Export Data" icon="↓">
+            <div style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 14, lineHeight: 1.6 }}>
+              Export your session data in multiple formats. Includes all file analyses, search history, and metrics.
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+              <button className="btn btn-secondary" onClick={exportSession} disabled={files.length === 0}>
+                <span>↓</span> Export JSON
+              </button>
+              <button className="btn btn-secondary" onClick={exportCSV} disabled={files.length === 0}>
+                <span>↓</span> Export CSV
+              </button>
+            </div>
+            <div style={{ fontSize: 11.5, color: 'var(--text3)', fontFamily: 'JetBrains Mono', background: 'rgba(0,0,0,0.2)', borderRadius: 6, padding: '10px 12px' }}>
+              <div>Session: {files.length} files · {totalQueries} queries</div>
+              <div style={{ marginTop: 2 }}>Storage: sessionStorage (clears on tab close)</div>
+              <div style={{ marginTop: 2 }}>Total size: {formatBytes(files.reduce((s, f) => s + f.size, 0))}</div>
+            </div>
+          </Section>
 
-        <SettingRow icon={Eye} title="Show Line Numbers" description="Display line numbers in file content previews and issue locations.">
-          <Toggle on={settings.showLineNumbers} onToggle={() => update({ showLineNumbers: !settings.showLineNumbers })} />
-        </SettingRow>
+          {/* Session management */}
+          <Section title="Session Management" icon="⏻">
+            <div style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 16, lineHeight: 1.6 }}>
+              All data is stored in sessionStorage — it persists while your tab is open but clears when you close it. Clearing the session removes all indexed files, search history, and analytics.
+            </div>
 
-        <SettingRow icon={RefreshCw} title="Auto-Analyze on Upload" description="Immediately run full analysis when a file is dropped. Disable to defer analysis.">
-          <Toggle on={settings.autoAnalyze} onToggle={() => update({ autoAnalyze: !settings.autoAnalyze })} />
-        </SettingRow>
+            {showConfirmClear ? (
+              <div style={{ background: 'rgba(255,68,85,0.08)', border: '1px solid rgba(255,68,85,0.2)', borderRadius: 8, padding: '16px' }}>
+                <div style={{ fontFamily: 'Syne', fontWeight: 700, fontSize: 14, color: 'var(--danger)', marginBottom: 8 }}>⚠ Confirm Clear Session</div>
+                <div style={{ fontSize: 12.5, color: 'var(--text2)', marginBottom: 14 }}>
+                  This will permanently remove all {files.length} indexed files and {searchHistory.length} search history entries. This cannot be undone.
+                </div>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button className="btn btn-danger" onClick={clearSession}><span>✕</span> Yes, Clear Everything</button>
+                  <button className="btn btn-ghost" onClick={() => setShowConfirmClear(false)}>Cancel</button>
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <button className="btn btn-danger" onClick={() => setShowConfirmClear(true)} disabled={files.length === 0 && searchHistory.length === 0}>
+                  <span>✕</span> Clear Session
+                </button>
+                <button className="btn btn-ghost" onClick={() => navigate('home')}>
+                  <span>⌂</span> Back to Home
+                </button>
+              </div>
+            )}
+          </Section>
 
-        <SettingRow icon={FileText} title="Maximum File Size" description="Files larger than this limit will be rejected. Prevents slow parsing of very large documents.">
-          <select
-            value={settings.maxFileSize}
-            onChange={e => update({ maxFileSize: Number(e.target.value) })}
-            className="input-field"
-            style={{ width: '140px' }}
-          >
-            <option value={1048576}>1 MB</option>
-            <option value={2097152}>2 MB</option>
-            <option value={5242880}>5 MB</option>
-            <option value={10485760}>10 MB</option>
-          </select>
-        </SettingRow>
-      </div>
-
-      {/* Search Settings */}
-      <div className="glass-card p-6">
-        <div className="flex items-center gap-2 mb-2">
-          <Search className="w-4 h-4" style={{ color: '#06b6d4' }} />
-          <h3 className="font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--text-primary)' }}>
-            Search Settings
-          </h3>
-        </div>
-        <p className="text-xs mb-4" style={{ color: 'var(--text-muted)' }}>Control how search behaves and how results are displayed.</p>
-
-        <SettingRow icon={Search} title="Case-Sensitive Search" description="When enabled, 'Error' and 'error' are treated as different terms.">
-          <Toggle on={settings.caseSensitive} onToggle={() => update({ caseSensitive: !settings.caseSensitive })} />
-        </SettingRow>
-
-        <SettingRow icon={RefreshCw} title="Real-Time Search" description="Trigger search as you type (debounced). Disable for manual search-on-Enter only.">
-          <Toggle on={settings.realtimeSearch} onToggle={() => update({ realtimeSearch: !settings.realtimeSearch })} />
-        </SettingRow>
-
-        <SettingRow icon={Eye} title="Default Search Filter" description="Which filter is pre-selected when you open the Search section.">
-          <select
-            value={settings.defaultFilter}
-            onChange={e => update({ defaultFilter: e.target.value })}
-            className="input-field"
-            style={{ width: '180px' }}
-          >
-            <option value="case-insensitive">Case Insensitive</option>
-            <option value="exact">Exact Match</option>
-            <option value="whole-word">Whole Word</option>
-            <option value="fuzzy">Fuzzy Match</option>
-            <option value="contains-all">Contains All Words</option>
-            <option value="regex">Regex Pattern</option>
-          </select>
-        </SettingRow>
-
-        <SettingRow icon={Sliders} title="Snippet Length (chars)" description="How many characters of context appear around each match in search results.">
-          <select
-            value={settings.snippetLength}
-            onChange={e => update({ snippetLength: Number(e.target.value) })}
-            className="input-field"
-            style={{ width: '120px' }}
-          >
-            <option value={60}>60 chars</option>
-            <option value={120}>120 chars</option>
-            <option value={200}>200 chars</option>
-            <option value={400}>400 chars</option>
-          </select>
-        </SettingRow>
-      </div>
-
-      {/* Notification Settings */}
-      <div className="glass-card p-6">
-        <div className="flex items-center gap-2 mb-2">
-          <Bell className="w-4 h-4" style={{ color: '#8b5cf6' }} />
-          <h3 className="font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--text-primary)' }}>
-            Notifications
-          </h3>
-        </div>
-        <p className="text-xs mb-4" style={{ color: 'var(--text-muted)' }}>Toast alerts for uploads, searches, exports, and errors.</p>
-
-        <SettingRow icon={Bell} title="Enable Notifications" description="Show toast alerts for file uploads, search results, errors, and actions.">
-          <Toggle on={settings.notificationsEnabled} onToggle={() => update({ notificationsEnabled: !settings.notificationsEnabled })} />
-        </SettingRow>
-
-        <SettingRow icon={Volume2} title="Sound Alerts" description="Play a subtle chime on important events (upload complete, error detected). Requires notifications.">
-          <Toggle on={settings.soundEnabled} onToggle={() => update({ soundEnabled: !settings.soundEnabled })} />
-        </SettingRow>
-      </div>
-
-      {/* Export Settings */}
-      <div className="glass-card p-6">
-        <div className="flex items-center gap-2 mb-2">
-          <Download className="w-4 h-4" style={{ color: '#10b981' }} />
-          <h3 className="font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--text-primary)' }}>
-            Export
-          </h3>
-        </div>
-        <p className="text-xs mb-4" style={{ color: 'var(--text-muted)' }}>Download your session data for external use or record-keeping.</p>
-
-        <SettingRow icon={FileText} title="Export Format" description="Choose the file format when exporting session data.">
-          <select
-            value={settings.exportFormat}
-            onChange={e => update({ exportFormat: e.target.value as any })}
-            className="input-field"
-            style={{ width: '120px' }}
-          >
-            <option value="json">JSON</option>
-            <option value="csv">CSV</option>
-            <option value="txt">Plain Text</option>
-          </select>
-        </SettingRow>
-
-        <div className="pt-4">
-          <button
-            onClick={doExport}
-            disabled={files.length === 0}
-            className="btn-secondary flex items-center gap-2"
-            style={{ opacity: files.length === 0 ? 0.5 : 1 }}
-          >
-            <Download className="w-4 h-4" />
-            Export Session as {settings.exportFormat.toUpperCase()}
-          </button>
-          {files.length === 0 && (
-            <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
-              Upload files first to enable export.
-            </p>
+          {/* Keyboard shortcuts reference */}
+          {settings.keyboardShortcuts && (
+            <Section title="Keyboard Shortcuts" icon="⌨">
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                {[['Ctrl+1', 'Home'], ['Ctrl+2', 'Overview'], ['Ctrl+3', 'Upload'], ['Ctrl+4', 'My Files'], ['Ctrl+5', 'Search'], ['Ctrl+6', 'Analytics'], ['Ctrl+7', 'Settings']].map(([key, label]) => (
+                  <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0' }}>
+                    <span style={{ fontFamily: 'JetBrains Mono', fontSize: 11, background: 'rgba(255,255,255,0.08)', padding: '2px 8px', borderRadius: 4, border: '1px solid var(--border)', color: 'var(--accent)', whiteSpace: 'nowrap' }}>{key}</span>
+                    <span style={{ fontSize: 12, color: 'var(--text2)' }}>{label}</span>
+                  </div>
+                ))}
+              </div>
+            </Section>
           )}
         </div>
       </div>
 
-      {/* Danger Zone */}
-      <div className="glass-card p-6" style={{ border: '1px solid rgba(244,63,94,0.25)' }}>
-        <div className="flex items-center gap-2 mb-2">
-          <Trash2 className="w-4 h-4" style={{ color: '#f43f5e' }} />
-          <h3 className="font-bold" style={{ fontFamily: 'var(--font-display)', color: '#f43f5e' }}>
-            Danger Zone
-          </h3>
-        </div>
-        <p className="text-xs mb-6" style={{ color: 'var(--text-muted)' }}>
-          Irreversible actions. Proceed with caution.
-        </p>
-
-        <SettingRow
-          icon={Trash2}
-          title="Clear All Files"
-          description="Remove all indexed files, reset metrics, and clear search history. Settings are preserved."
-          danger
-        >
-          <button
-            onClick={handleClearAll}
-            disabled={files.length === 0 && totalQueries === 0}
-            className="btn-danger flex items-center gap-1.5"
-            style={{ opacity: files.length === 0 && totalQueries === 0 ? 0.4 : 1 }}
-          >
-            <Trash2 className="w-3.5 h-3.5" /> Clear Session
-          </button>
-        </SettingRow>
-
-        <SettingRow
-          icon={RefreshCw}
-          title="Reset All Settings"
-          description="Restore all settings to their factory defaults. Files are not affected."
-          danger
-        >
-          <button
-            onClick={() => {
-              dispatch({
-                type: 'UPDATE_SETTINGS', payload: {
-                  stopwordsEnabled: false, caseSensitive: false, realtimeSearch: false,
-                  maxFileSize: 5242880, snippetLength: 120, showLineNumbers: true,
-                  autoAnalyze: true, defaultFilter: 'case-insensitive',
-                  exportFormat: 'json', notificationsEnabled: true, soundEnabled: false,
-                }
-              });
-              dispatch({ type: 'ADD_NOTIFICATION', payload: { type: 'info', title: 'Settings Reset', message: 'All settings restored to defaults.' } });
-            }}
-            className="btn-danger flex items-center gap-1.5"
-          >
-            <RefreshCw className="w-3.5 h-3.5" /> Reset Defaults
-          </button>
-        </SettingRow>
-      </div>
-
-      {/* About */}
-      <div className="glass-card p-6">
-        <h3 className="font-bold mb-3" style={{ fontFamily: 'var(--font-display)', color: 'var(--text-primary)' }}>
-          About SmartQuery Optimizer
-        </h3>
-        <div className="space-y-1.5">
-          {[
-            ['Version', 'v2.0.0'],
-            ['Build', 'Next.js 14 + TypeScript'],
-            ['Storage', 'sessionStorage (tab-scoped, no server)'],
-            ['Privacy', '100% client-side — no data ever leaves your browser'],
-            ['Search Filters', '20 advanced filters available'],
-            ['Analysis Metrics', '15+ per-file metrics computed on upload'],
-          ].map(([k, v]) => (
-            <div key={k} className="flex items-center justify-between py-1">
-              <span className="mono text-xs" style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: '0.65rem' }}>{k}</span>
-              <span className="mono text-xs" style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', fontSize: '0.72rem' }}>{v}</span>
-            </div>
-          ))}
+      {/* App info footer */}
+      <div className="card" style={{ padding: '14px 22px', marginTop: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+          <div style={{ fontSize: 12, color: 'var(--text3)', fontFamily: 'JetBrains Mono' }}>
+            SmartQuery Optimizer v3.0 · Next.js 14 · Zero external dependencies · 100% client-side · sessionStorage persistence
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <span className="badge badge-success">✓ Vercel Ready</span>
+            <span className="badge badge-info">BM25 Search</span>
+            <span className="badge badge-purple">Zero CSS Deps</span>
+          </div>
         </div>
       </div>
     </div>

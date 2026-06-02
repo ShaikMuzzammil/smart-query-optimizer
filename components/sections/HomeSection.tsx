@@ -1,229 +1,205 @@
 'use client';
+// components/sections/HomeSection.tsx
+import React, { useEffect, useRef } from 'react';
+import { useApp, useMetrics } from '../../lib/AppContext';
 
-import { useApp } from '../../lib/store';
-import {
-  Search, Upload, BarChart2, Shield, Zap, Brain, FileText,
-  ArrowRight, Database, Activity, Globe
-} from 'lucide-react';
+const FEATURES = [
+  { icon: '⬆', title: 'Smart Upload', desc: 'Drag & drop .txt files for instant deep analysis with real-time processing', color: 'var(--accent)' },
+  { icon: '⌕', title: 'BM25 Search', desc: 'Industry-grade BM25 scoring with 20+ filters, regex, fuzzy, and proximity search', color: 'var(--accent2)' },
+  { icon: '◉', title: 'Live Analytics', desc: 'Canvas-rendered charts: word frequency, sentiment, readability, and issue distribution', color: 'var(--accent3)' },
+  { icon: '▦', title: 'File Manager', desc: 'Sortable table with detailed per-file analysis modals and export capabilities', color: 'var(--accent4)' },
+  { icon: '♦', title: 'Issue Detection', desc: '25+ issue patterns detected by severity: critical, high, medium, low', color: 'var(--accent)' },
+  { icon: '✦', title: 'Readability', desc: 'Flesch-Kincaid scores, sentiment analysis, lexical density, and bigrams', color: 'var(--accent2)' },
+];
 
-export function HomeSection() {
-  const { navigateTo, state } = useApp();
-  const { files, totalQueries, globalMetrics } = state;
+const DEMO_STATS = [
+  { label: 'Analysis Metrics', value: '40+' },
+  { label: 'Search Filters', value: '20+' },
+  { label: 'Issue Patterns', value: '25' },
+  { label: 'Chart Types', value: '8' },
+];
 
-  const features = [
-    { icon: Brain, title: 'AI-Powered Analysis', desc: 'Readability scores, sentiment analysis, lexical density, and 15+ advanced metrics per document.', color: '#8b5cf6', badge: 'SMART' },
-    { icon: Search, title: '20 Search Filters', desc: 'Exact match, regex, fuzzy, proximity, sentiment context, frequency analysis, and more.', color: '#06b6d4', badge: 'ADVANCED' },
-    { icon: Shield, title: 'Issue Detection', desc: 'Automatically flags errors, exceptions, crashes, vulnerabilities, and 14+ critical keywords.', color: '#f43f5e', badge: 'SECURITY' },
-    { icon: BarChart2, title: 'Live Analytics', desc: 'Real-time charts for term frequency, issue distribution, word count analysis, and sentiment.', color: '#10b981', badge: 'CHARTS' },
-    { icon: Zap, title: 'Instant Indexing', desc: 'Inverted index built on upload. Search across all files simultaneously with relevance scoring.', color: '#f59e0b', badge: 'FAST' },
-    { icon: Globe, title: 'Session Persistence', desc: 'Your files and search history survive page refreshes. Export your full session as JSON/CSV/TXT.', color: '#f97316', badge: 'PERSIST' },
-  ];
+export default function HomeSection() {
+  const { navigate } = useApp();
+  const { totalFiles, totalQueries } = useMetrics();
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  const stats = [
-    { label: 'Search Filters', value: '20', color: '#f59e0b' },
-    { label: 'Analysis Metrics', value: '15+', color: '#06b6d4' },
-    { label: 'Issue Keywords', value: '20', color: '#f43f5e' },
-    { label: 'Export Formats', value: '3', color: '#10b981' },
-  ];
+  // Animated particle background
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const resize = () => {
+      canvas.width = canvas.offsetWidth;
+      canvas.height = canvas.offsetHeight;
+    };
+    resize();
+    window.addEventListener('resize', resize);
+
+    const particles: { x: number; y: number; vx: number; vy: number; opacity: number; size: number; color: string }[] = [];
+    const colors = ['#00ff9d', '#00c8ff', '#a78bfa'];
+
+    for (let i = 0; i < 60; i++) {
+      particles.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        vx: (Math.random() - 0.5) * 0.4,
+        vy: (Math.random() - 0.5) * 0.4,
+        opacity: Math.random() * 0.5 + 0.1,
+        size: Math.random() * 2 + 0.5,
+        color: colors[Math.floor(Math.random() * colors.length)],
+      });
+    }
+
+    let raf: number;
+    const draw = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Draw connections
+      for (let i = 0; i < particles.length; i++) {
+        for (let j = i + 1; j < particles.length; j++) {
+          const dx = particles[i].x - particles[j].x;
+          const dy = particles[i].y - particles[j].y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < 120) {
+            ctx.beginPath();
+            ctx.strokeStyle = `rgba(0,255,157,${0.05 * (1 - dist / 120)})`;
+            ctx.lineWidth = 0.5;
+            ctx.moveTo(particles[i].x, particles[i].y);
+            ctx.lineTo(particles[j].x, particles[j].y);
+            ctx.stroke();
+          }
+        }
+      }
+
+      // Draw particles
+      particles.forEach(p => {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fillStyle = p.color + Math.floor(p.opacity * 255).toString(16).padStart(2, '0');
+        ctx.fill();
+
+        p.x += p.vx;
+        p.y += p.vy;
+        if (p.x < 0 || p.x > canvas.width) p.vx *= -1;
+        if (p.y < 0 || p.y > canvas.height) p.vy *= -1;
+      });
+
+      raf = requestAnimationFrame(draw);
+    };
+    draw();
+
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('resize', resize);
+    };
+  }, []);
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: 'var(--bg-primary)' }}>
-      {/* Top bar - minimal on landing */}
-      <header className="flex items-center justify-between px-8 py-5 border-b"
-        style={{ borderColor: 'rgba(30,58,95,0.4)', backdropFilter: 'blur(12px)', background: 'rgba(8,12,20,0.8)' }}>
-        <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center"
-            style={{ background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.4)' }}>
-            <Database className="w-4.5 h-4.5" style={{ color: '#f59e0b' }} />
-          </div>
-          <div>
-            <div className="font-bold text-base" style={{ fontFamily: 'var(--font-display)', color: '#f59e0b', letterSpacing: '-0.01em' }}>
-              SmartQuery
-            </div>
-            <div className="text-xs" style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.1em' }}>
-              OPTIMIZER v2.0
-            </div>
-          </div>
-        </div>
-        <div className="flex items-center gap-3">
-          {files.length > 0 && (
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg"
-              style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)' }}>
-              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-xs" style={{ color: '#10b981', fontFamily: 'var(--font-mono)', fontSize: '0.65rem' }}>
-                {files.length} file{files.length !== 1 ? 's' : ''} indexed
-              </span>
-            </div>
-          )}
-          <button onClick={() => navigateTo('overview')} className="btn-secondary">
-            {files.length > 0 ? 'Dashboard →' : 'Get Started →'}
-          </button>
-        </div>
-      </header>
-
+    <div>
       {/* Hero */}
-      <main className="flex-1 flex flex-col">
-        {/* Hero section */}
-        <section className="relative px-8 py-24 overflow-hidden">
-          {/* Background glow */}
-          <div className="absolute inset-0 overflow-hidden pointer-events-none">
-            <div className="absolute -top-40 left-1/2 -translate-x-1/2 w-[600px] h-[600px] rounded-full opacity-10"
-              style={{ background: 'radial-gradient(circle, #f59e0b, transparent 70%)' }} />
-            <div className="absolute top-1/4 right-0 w-96 h-96 rounded-full opacity-5"
-              style={{ background: 'radial-gradient(circle, #06b6d4, transparent 70%)' }} />
+      <div style={{ position: 'relative', borderRadius: 20, overflow: 'hidden', background: 'rgba(7,16,32,0.8)', border: '1px solid rgba(0,255,157,0.12)', minHeight: 380, display: 'flex', alignItems: 'center', marginBottom: 28 }}>
+        <canvas ref={canvasRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />
+        <div style={{ position: 'relative', zIndex: 2, padding: '52px 48px', maxWidth: 620 }}>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '4px 12px', background: 'rgba(0,255,157,0.08)', border: '1px solid rgba(0,255,157,0.2)', borderRadius: 20, fontSize: 12, color: 'var(--accent)', fontFamily: 'JetBrains Mono', marginBottom: 20, fontWeight: 600 }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent)', display: 'inline-block', animation: 'pulse 2s ease-in-out infinite', boxShadow: '0 0 6px var(--accent)' }} />
+            v3.0 ADVANCED · PRODUCTION READY
           </div>
 
-          <div className="relative max-w-4xl mx-auto text-center">
-            {/* Tag */}
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full mb-8"
-              style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)' }}>
-              <Activity className="w-3 h-3" style={{ color: '#f59e0b' }} />
-              <span className="text-xs font-semibold" style={{ color: '#f59e0b', fontFamily: 'var(--font-mono)', letterSpacing: '0.08em' }}>
-                ADVANCED TEXT INTELLIGENCE PLATFORM
-              </span>
-            </div>
+          <h1 style={{ fontFamily: 'Syne', fontSize: 46, fontWeight: 800, lineHeight: 1.1, marginBottom: 16, color: 'var(--text)' }}>
+            Smart{' '}
+            <span style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent2))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>
+              Query
+            </span>
+            {' '}Optimizer
+          </h1>
 
-            <h1 className="text-5xl md:text-7xl font-bold mb-6 leading-none"
-              style={{ fontFamily: 'var(--font-display)', letterSpacing: '-0.03em' }}>
-              <span style={{ color: 'var(--text-primary)' }}>Analyze.</span>{' '}
-              <span style={{ color: '#f59e0b' }}>Search.</span>{' '}
-              <span style={{ color: 'var(--text-primary)' }}>Understand.</span>
-            </h1>
+          <p style={{ fontSize: 16, color: 'var(--text2)', lineHeight: 1.7, marginBottom: 28, maxWidth: 480 }}>
+            Distributed text analysis engine with BM25 search scoring, real-time analytics, 40+ analysis metrics, and production-grade deployment.
+          </p>
 
-            <p className="text-lg max-w-2xl mx-auto mb-10 leading-relaxed"
-              style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-body)' }}>
-              Upload text files and get instant deep analysis — readability scores, sentiment, issue detection, word frequency maps, and powerful 20-filter search. All in your browser.
-            </p>
-
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <button onClick={() => navigateTo('upload')} className="btn-primary flex items-center gap-2 text-sm px-8 py-3">
-                <Upload className="w-4 h-4" />
-                Upload Your First File
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <button className="btn btn-primary btn-lg" onClick={() => navigate('upload')}>
+              <span>↑</span> Upload & Analyze
+            </button>
+            {totalFiles > 0 ? (
+              <button className="btn btn-secondary btn-lg" onClick={() => navigate('overview')}>
+                <span>◈</span> Dashboard ({totalFiles} files)
               </button>
-              {files.length > 0 && (
-                <button onClick={() => navigateTo('overview')} className="btn-secondary flex items-center gap-2 text-sm px-8 py-3">
-                  <BarChart2 className="w-4 h-4" />
-                  View Dashboard
-                </button>
-              )}
-            </div>
-
-            {/* Live stats if files exist */}
-            {files.length > 0 && (
-              <div className="mt-12 grid grid-cols-3 gap-4 max-w-md mx-auto">
-                {[
-                  { label: 'Files Indexed', value: files.length, color: '#06b6d4' },
-                  { label: 'Total Queries', value: totalQueries, color: '#f59e0b' },
-                  { label: 'Issues Found', value: globalMetrics.totalIssues, color: '#f43f5e' },
-                ].map(s => (
-                  <div key={s.label} className="glass-card p-4 text-center">
-                    <div className="mono text-2xl font-bold" style={{ color: s.color, fontFamily: 'var(--font-mono)' }}>
-                      {s.value.toLocaleString()}
-                    </div>
-                    <div className="text-xs mt-1" style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: '0.6rem', letterSpacing: '0.05em' }}>
-                      {s.label.toUpperCase()}
-                    </div>
-                  </div>
-                ))}
-              </div>
+            ) : (
+              <button className="btn btn-ghost btn-lg" onClick={() => navigate('overview')}>
+                <span>◈</span> View Dashboard
+              </button>
             )}
           </div>
-        </section>
 
-        {/* Platform stats */}
-        <section className="px-8 py-8 border-y" style={{ borderColor: 'rgba(30,58,95,0.4)', background: 'rgba(13,21,32,0.5)' }}>
-          <div className="max-w-4xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-6">
-            {stats.map(s => (
-              <div key={s.label} className="text-center">
-                <div className="mono text-3xl font-bold" style={{ color: s.color, fontFamily: 'var(--font-mono)' }}>{s.value}</div>
-                <div className="text-xs mt-1" style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: '0.65rem', letterSpacing: '0.1em' }}>
-                  {s.label.toUpperCase()}
+          {totalQueries > 0 && (
+            <div style={{ marginTop: 20, fontSize: 12, color: 'var(--text3)', fontFamily: 'JetBrains Mono' }}>
+              ✓ {totalFiles} files indexed · {totalQueries} queries executed this session
+            </div>
+          )}
+        </div>
+
+        {/* Right side terminal decoration */}
+        <div style={{ position: 'absolute', right: 48, top: '50%', transform: 'translateY(-50%)', fontFamily: 'JetBrains Mono', fontSize: 12, color: 'var(--text3)', lineHeight: 2, display: 'flex', flexDirection: 'column', gap: 0 }}>
+          {['> analyzing text corpus...', '> building inverted index...', '> computing BM25 scores...', '> sentiment: POSITIVE', '> readability: EASY', '> index terms: ready'].map((line, i) => (
+            <div key={i} style={{ animation: `fadeUp 0.4s ease ${i * 0.1}s both`, color: i === 5 ? 'var(--accent)' : i === 4 ? 'var(--accent2)' : 'var(--text3)' }}>
+              {line}
+              {i === 5 && <span style={{ animation: 'blink 1s step-end infinite' }}>_</span>}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Demo stats */}
+      <div className="grid-4" style={{ marginBottom: 28 }}>
+        {DEMO_STATS.map((s, i) => (
+          <div key={i} className="metric-card" style={{ textAlign: 'center', animationDelay: `${i * 0.05}s` }}>
+            <div className="metric-value" style={{ fontSize: 36 }}>{s.value}</div>
+            <div className="metric-label" style={{ justifyContent: 'center', marginTop: 4 }}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Features grid */}
+      <div style={{ marginBottom: 28 }}>
+        <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <h2 style={{ fontFamily: 'Syne', fontWeight: 700, fontSize: 18, color: 'var(--text)' }}>Core Capabilities</h2>
+          <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+        </div>
+        <div className="grid-3" style={{ gap: 14 }}>
+          {FEATURES.map((f, i) => (
+            <div key={i} className="card card-hover" style={{ padding: '18px 20px', animation: `fadeUp 0.4s ease ${i * 0.06}s both` }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                <div style={{ width: 34, height: 34, borderRadius: 8, background: f.color + '18', border: `1px solid ${f.color}33`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, color: f.color, flexShrink: 0 }}>
+                  {f.icon}
                 </div>
+                <div style={{ fontFamily: 'Syne', fontWeight: 700, fontSize: 14, color: 'var(--text)' }}>{f.title}</div>
               </div>
+              <div style={{ fontSize: 12.5, color: 'var(--text2)', lineHeight: 1.6 }}>{f.desc}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Quick actions */}
+      <div className="card" style={{ padding: '20px 24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+          <div>
+            <div style={{ fontFamily: 'Syne', fontWeight: 700, fontSize: 15, color: 'var(--text)', marginBottom: 4 }}>Get Started</div>
+            <div style={{ fontSize: 12.5, color: 'var(--text2)' }}>Upload a .txt file to begin analysis. No account needed — all data stays in your session.</div>
+          </div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            {['overview', 'search', 'analytics', 'settings'].map(s => (
+              <button key={s} className="btn btn-ghost btn-sm" onClick={() => navigate(s)} style={{ textTransform: 'capitalize' }}>
+                {s === 'overview' ? '◈' : s === 'search' ? '⌕' : s === 'analytics' ? '◉' : '⚙'} {s}
+              </button>
             ))}
           </div>
-        </section>
-
-        {/* Features grid */}
-        <section className="px-8 py-20 max-w-6xl mx-auto w-full">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold mb-3" style={{ fontFamily: 'var(--font-display)', color: 'var(--text-primary)' }}>
-              Everything You Need
-            </h2>
-            <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-              Professional text analysis tools, all running locally in your browser — no backend required.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {features.map((f, i) => {
-              const Icon = f.icon;
-              return (
-                <div key={i} className="glass-card glass-card-hover p-6">
-                  <div className="flex items-start gap-4">
-                    <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-                      style={{ background: `${f.color}20`, border: `1px solid ${f.color}40` }}>
-                      <Icon className="w-5 h-5" style={{ color: f.color }} />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-semibold text-sm" style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-display)' }}>
-                          {f.title}
-                        </span>
-                        <span className="badge" style={{
-                          background: `${f.color}15`, color: f.color,
-                          border: `1px solid ${f.color}30`, fontSize: '0.55rem', padding: '0.15rem 0.5rem'
-                        }}>
-                          {f.badge}
-                        </span>
-                      </div>
-                      <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>{f.desc}</p>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-
-        {/* CTA */}
-        <section className="px-8 py-16 border-t" style={{ borderColor: 'rgba(30,58,95,0.4)', background: 'rgba(13,21,32,0.4)' }}>
-          <div className="max-w-2xl mx-auto text-center">
-            <h2 className="text-3xl font-bold mb-4" style={{ fontFamily: 'var(--font-display)', color: 'var(--text-primary)' }}>
-              Ready to analyze your files?
-            </h2>
-            <p className="text-sm mb-8" style={{ color: 'var(--text-secondary)' }}>
-              Upload any .txt file and get a complete intelligence report in seconds. No signup. No limits. 100% private.
-            </p>
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-              <button onClick={() => navigateTo('upload')} className="btn-primary flex items-center gap-2">
-                <FileText className="w-4 h-4" />
-                Start Analyzing
-                <ArrowRight className="w-4 h-4" />
-              </button>
-              <button onClick={() => navigateTo('search')} className="btn-ghost flex items-center gap-2">
-                <Search className="w-4 h-4" />
-                Try Search
-              </button>
-            </div>
-          </div>
-        </section>
-
-        {/* Footer */}
-        <footer className="px-8 py-6 border-t" style={{ borderColor: 'rgba(30,58,95,0.3)' }}>
-          <div className="max-w-4xl mx-auto flex items-center justify-between">
-            <span className="mono text-xs" style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: '0.65rem' }}>
-              © 2025 SmartQuery Optimizer — All data processed locally
-            </span>
-            <div className="flex items-center gap-1.5">
-              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="mono text-xs" style={{ color: '#10b981', fontFamily: 'var(--font-mono)', fontSize: '0.65rem' }}>
-                No data leaves your browser
-              </span>
-            </div>
-          </div>
-        </footer>
-      </main>
+        </div>
+      </div>
     </div>
   );
 }

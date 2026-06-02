@@ -1,258 +1,336 @@
 'use client';
+// components/sections/OverviewSection.tsx
+import React, { useEffect, useRef, useMemo } from 'react';
+import { useApp, useMetrics } from '../../lib/AppContext';
+import { formatBytes } from '../../lib/analyzer';
 
-import { useApp } from '../../lib/store';
-import {
-  Search, FileText, AlertTriangle, Database, TrendingUp,
-  Upload, Activity, Clock, BarChart2, BookOpen
-} from 'lucide-react';
-
-function MetricCard({
-  title, value, sub, icon: Icon, color, trend, onClick,
-}: {
-  title: string; value: string | number; sub?: string; icon: React.ElementType;
-  color: string; trend?: string; onClick?: () => void;
-}) {
+function MiniBarChart({ data, label, color = 'var(--accent)' }: { data: { label: string; value: number }[]; label: string; color?: string }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || data.length === 0) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const W = canvas.width = canvas.offsetWidth;
+    const H = canvas.height = canvas.offsetHeight;
+    ctx.clearRect(0, 0, W, H);
+    const max = Math.max(...data.map(d => d.value), 1);
+    const barW = Math.max(4, (W / data.length) - 3);
+    data.forEach((d, i) => {
+      const x = i * (W / data.length) + (W / data.length - barW) / 2;
+      const h = Math.max(2, (d.value / max) * (H - 24));
+      const y = H - h - 20;
+      const grad = ctx.createLinearGradient(0, y, 0, y + h);
+      grad.addColorStop(0, color);
+      grad.addColorStop(1, color + '44');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.roundRect(x, y, barW, h, 3);
+      ctx.fill();
+      if (data.length <= 10) {
+        ctx.fillStyle = 'rgba(120,160,200,0.7)';
+        ctx.font = '9px JetBrains Mono, monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(d.label.slice(0, 6), x + barW / 2, H - 6);
+      }
+    });
+  }, [data, color]);
   return (
-    <div
-      className={`metric-card ${color} cursor-pointer`}
-      onClick={onClick}
-      style={{ cursor: onClick ? 'pointer' : 'default' }}
-    >
-      <div className="flex items-start justify-between mb-4">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center"
-          style={{ background: `${colorMap[color]}20`, border: `1px solid ${colorMap[color]}30` }}>
-          <Icon className="w-5 h-5" style={{ color: colorMap[color] }} />
+    <div style={{ position: 'relative', width: '100%', height: 80 }}>
+      <canvas ref={canvasRef} style={{ width: '100%', height: '100%' }} />
+      {data.length === 0 && (
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: 'var(--text3)', fontFamily: 'JetBrains Mono' }}>
+          No data
         </div>
-        {trend && (
-          <span className="mono text-xs px-2 py-0.5 rounded"
-            style={{ background: 'rgba(16,185,129,0.1)', color: '#10b981', fontFamily: 'var(--font-mono)', fontSize: '0.65rem', border: '1px solid rgba(16,185,129,0.2)' }}>
-            {trend}
-          </span>
-        )}
-      </div>
-      <div className="stat-number mb-1" style={{ color: colorMap[color] }}>
-        {typeof value === 'number' ? value.toLocaleString() : value}
-      </div>
-      <div className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>{title}</div>
-      {sub && <div className="text-xs mt-1" style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: '0.65rem' }}>{sub}</div>}
+      )}
     </div>
   );
 }
 
-const colorMap: Record<string, string> = {
-  amber: '#f59e0b', cyan: '#06b6d4', rose: '#f43f5e',
-  emerald: '#10b981', violet: '#8b5cf6', orange: '#f97316',
-};
+function DonutChart({ positive, negative, neutral }: { positive: number; negative: number; neutral: number }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const W = canvas.width = canvas.offsetWidth;
+    const H = canvas.height = canvas.offsetHeight;
+    ctx.clearRect(0, 0, W, H);
+    const total = positive + negative + neutral || 1;
+    const cx = W / 2, cy = H / 2, r = Math.min(W, H) / 2 - 8, inner = r * 0.58;
+    const segments = [
+      { value: positive, color: '#00ff9d' },
+      { value: negative, color: '#ff4455' },
+      { value: neutral, color: '#3a5070' },
+    ];
+    let angle = -Math.PI / 2;
+    segments.forEach(seg => {
+      if (seg.value === 0) return;
+      const sweep = (seg.value / total) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.arc(cx, cy, r, angle, angle + sweep);
+      ctx.closePath();
+      ctx.fillStyle = seg.color;
+      ctx.fill();
+      angle += sweep;
+    });
+    ctx.beginPath();
+    ctx.arc(cx, cy, inner, 0, Math.PI * 2);
+    ctx.fillStyle = '#071020';
+    ctx.fill();
+    ctx.fillStyle = '#00ff9d';
+    ctx.font = `bold 13px Syne, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const pct = Math.round((positive / total) * 100);
+    ctx.fillText(pct + '%', cx, cy - 6);
+    ctx.fillStyle = '#7a9fc0';
+    ctx.font = '9px JetBrains Mono, monospace';
+    ctx.fillText('POS', cx, cy + 8);
+  }, [positive, negative, neutral]);
+  return <canvas ref={canvasRef} style={{ width: '100%', height: 110 }} />;
+}
 
-export function OverviewSection() {
-  const { state, navigateTo } = useApp();
-  const { files, totalQueries, globalMetrics, searchHistory } = state;
+export default function OverviewSection() {
+  const { state, navigate } = useApp();
+  const { files, searchHistory, totalQueries } = state;
+  const { totalFiles, totalWords, totalLines, totalChars, highImpactIssues, indexTerms } = useMetrics();
 
-  const totalWords = files.reduce((s, f) => s + f.stats.wordCount, 0);
-  const totalLines = files.reduce((s, f) => s + f.stats.lineCount, 0);
-  const avgReadability = files.length
-    ? (files.reduce((s, f) => s + f.stats.readability.fleschKincaid, 0) / files.length).toFixed(1)
-    : '—';
+  const recentSearches = searchHistory.slice(0, 6);
 
-  const recentSearches = searchHistory.slice(0, 5);
-  const topFiles = [...files].sort((a, b) => b.queryCount - a.queryCount).slice(0, 5);
+  const globalTopWords = useMemo(() => {
+    const map = new Map<string, number>();
+    files.forEach(f => f.analysis.topWords.forEach(w => map.set(w.word, (map.get(w.word) || 0) + w.count)));
+    return [...map.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12).map(([word, count]) => ({ label: word, value: count }));
+  }, [files]);
 
-  return (
-    <div className="space-y-8">
-      {/* Header */}
+  const issuesByFile = useMemo(() =>
+    files.map(f => ({ label: f.name.replace('.txt', '').slice(0, 12), value: f.analysis.issues.reduce((s, i) => s + i.count, 0) })),
+    [files]
+  );
+
+  const sentimentTotals = useMemo(() => {
+    let pos = 0, neg = 0, neut = 0;
+    files.forEach(f => {
+      pos += f.analysis.sentiment.positiveCount;
+      neg += f.analysis.sentiment.negativeCount;
+      const total = f.analysis.wordCount;
+      neut += Math.max(0, total - f.analysis.sentiment.positiveCount - f.analysis.sentiment.negativeCount);
+    });
+    return { pos: Math.round(pos), neg: Math.round(neg), neut: Math.round(neut) };
+  }, [files]);
+
+  const avgReadability = useMemo(() => {
+    if (files.length === 0) return 0;
+    return Math.round(files.reduce((s, f) => s + f.analysis.readability.score, 0) / files.length);
+  }, [files]);
+
+  const METRIC_CARDS = [
+    { label: 'Total Queries', value: totalQueries, icon: '⌕', sub: `${recentSearches.length} recent`, color: 'var(--accent)' },
+    { label: 'Files Indexed', value: totalFiles, icon: '▦', sub: `${formatBytes(files.reduce((s, f) => s + f.size, 0))} total`, color: 'var(--accent2)' },
+    { label: 'High-Impact Issues', value: highImpactIssues, icon: '⚠', sub: 'critical + high severity', color: highImpactIssues > 0 ? 'var(--danger)' : 'var(--accent)' },
+    { label: 'Index Terms', value: indexTerms, icon: '◈', sub: 'unique content tokens', color: 'var(--accent3)' },
+    { label: 'Total Words', value: totalWords.toLocaleString(), icon: '▤', sub: `${totalLines.toLocaleString()} lines`, color: 'var(--accent4)' },
+    { label: 'Avg Readability', value: avgReadability > 0 ? avgReadability + '%' : '—', icon: '✦', sub: avgReadability >= 60 ? 'Easy to read' : avgReadability >= 40 ? 'Moderate' : files.length > 0 ? 'Complex' : 'No files', color: 'var(--accent2)' },
+  ];
+
+  if (files.length === 0) {
+    return (
       <div>
-        <div className="section-subtitle mb-1">Dashboard</div>
-        <h1 className="section-title">Overview</h1>
-        <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
-          Real-time insights across all indexed files. All metrics update instantly.
-        </p>
-      </div>
-
-      {/* Main metrics */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <MetricCard title="Total Queries" value={totalQueries} icon={Search} color="amber"
-          sub="lifetime searches" trend={totalQueries > 0 ? 'LIVE' : undefined}
-          onClick={() => navigateTo('search')} />
-        <MetricCard title="Files Indexed" value={files.length} icon={FileText} color="cyan"
-          sub="active in session" onClick={() => navigateTo('files')} />
-        <MetricCard title="High-Impact Issues" value={globalMetrics.totalIssues} icon={AlertTriangle} color="rose"
-          sub="errors, bugs, crashes" onClick={() => navigateTo('files')} />
-        <MetricCard title="Index Terms" value={globalMetrics.indexTerms} icon={Database} color="emerald"
-          sub="unique tokens" onClick={() => navigateTo('analytics')} />
-      </div>
-
-      {/* Secondary metrics */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <MetricCard title="Total Words" value={totalWords} icon={BookOpen} color="violet" sub="across all files" />
-        <MetricCard title="Total Lines" value={totalLines} icon={Activity} color="orange" sub="line count sum" />
-        <MetricCard title="Avg Readability" value={avgReadability} icon={TrendingUp} color="cyan"
-          sub="Flesch-Kincaid score" />
-        <MetricCard title="Search History" value={searchHistory.length} icon={Clock} color="amber"
-          sub="queries logged" onClick={() => navigateTo('search')} />
-      </div>
-
-      {files.length === 0 ? (
-        /* Empty state */
-        <div className="glass-card p-16 text-center">
-          <div className="w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-6"
-            style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)' }}>
-            <Upload className="w-10 h-10" style={{ color: '#f59e0b', opacity: 0.6 }} />
+        <div className="section-header">
+          <div>
+            <div className="section-title"><span className="section-icon">◈</span> Dashboard Overview</div>
+            <div className="section-subtitle">Real-time metrics update instantly as you upload and search</div>
           </div>
-          <h3 className="text-xl font-bold mb-3" style={{ fontFamily: 'var(--font-display)', color: 'var(--text-primary)' }}>
-            No files indexed yet
-          </h3>
-          <p className="text-sm mb-8 max-w-md mx-auto" style={{ color: 'var(--text-secondary)' }}>
-            Upload .txt files to get real-time analysis. All metrics, charts, and search features activate automatically.
-          </p>
-          <button onClick={() => navigateTo('upload')} className="btn-primary">
-            Upload Your First File
+        </div>
+        <div className="empty-state" style={{ border: '1px solid var(--border)', borderRadius: 'var(--r3)', background: 'var(--card)' }}>
+          <div className="empty-icon">◈</div>
+          <div className="empty-title">No Files Indexed Yet</div>
+          <div className="empty-desc">Upload your first .txt file to see live metrics, analytics, and detailed analysis across all sections.</div>
+          <button className="btn btn-primary" onClick={() => navigate('upload')}>
+            <span>↑</span> Upload First File
           </button>
         </div>
-      ) : (
-        <div className="grid lg:grid-cols-2 gap-6">
-          {/* Top Words preview */}
-          <div className="glass-card p-6">
-            <div className="flex items-center justify-between mb-5">
-              <h3 className="font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--text-primary)' }}>
-                Top Index Terms
-              </h3>
-              <button onClick={() => navigateTo('analytics')} className="btn-ghost text-xs">
-                View All →
-              </button>
-            </div>
-            <div className="space-y-3">
-              {globalMetrics.topGlobalWords.slice(0, 8).map((w, i) => {
-                const max = globalMetrics.topGlobalWords[0]?.count || 1;
-                const pct = (w.count / max) * 100;
-                return (
-                  <div key={w.word} className="flex items-center gap-3">
-                    <span className="mono text-xs w-5 text-right flex-shrink-0"
-                      style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: '0.65rem' }}>
-                      {i + 1}
-                    </span>
-                    <span className="mono text-xs w-28 truncate"
-                      style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', fontSize: '0.75rem' }}>
-                      {w.word}
-                    </span>
-                    <div className="flex-1 progress-bar">
-                      <div className="word-freq-bar" style={{ width: `${pct}%` }} />
-                    </div>
-                    <span className="mono text-xs w-10 text-right flex-shrink-0"
-                      style={{ color: '#f59e0b', fontFamily: 'var(--font-mono)', fontSize: '0.7rem' }}>
-                      {w.count}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+      </div>
+    );
+  }
 
-          {/* Files summary */}
-          <div className="glass-card p-6">
-            <div className="flex items-center justify-between mb-5">
-              <h3 className="font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--text-primary)' }}>
-                File Intelligence
-              </h3>
-              <button onClick={() => navigateTo('files')} className="btn-ghost text-xs">
-                Manage →
-              </button>
+  return (
+    <div>
+      <div className="section-header">
+        <div>
+          <div className="section-title"><span className="section-icon">◈</span> Dashboard Overview</div>
+          <div className="section-subtitle">Live metrics — updates instantly as you upload files and run searches</div>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-secondary btn-sm" onClick={() => navigate('upload')}><span>↑</span> Upload</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => navigate('analytics')}><span>◉</span> Analytics</button>
+        </div>
+      </div>
+
+      {/* Metric Cards */}
+      <div className="grid-3" style={{ marginBottom: 24 }}>
+        {METRIC_CARDS.map((m, i) => (
+          <div key={i} className="metric-card" style={{ animationDelay: `${i * 0.05}s` }}>
+            <div className="metric-label">{m.label}</div>
+            <div className="metric-value" style={{ background: `linear-gradient(135deg, ${m.color}, var(--accent2))`, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>
+              {typeof m.value === 'number' ? m.value.toLocaleString() : m.value}
             </div>
-            <div className="space-y-2">
-              {files.slice(0, 6).map(file => (
-                <div key={file.id}
-                  className="flex items-center justify-between p-3 rounded-lg"
-                  style={{ background: 'rgba(13,21,32,0.6)', border: '1px solid rgba(30,58,95,0.4)' }}>
-                  <div className="flex items-center gap-3 min-w-0">
-                    <FileText className="w-4 h-4 flex-shrink-0"
-                      style={{ color: file.stats.issues.length > 0 ? '#f43f5e' : '#06b6d4' }} />
-                    <div className="min-w-0">
-                      <div className="text-sm truncate" style={{ color: 'var(--text-primary)', maxWidth: '140px' }}>
-                        {file.name}
+            <div className="metric-sub">{m.sub}</div>
+            <div className="metric-icon">{m.icon}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Charts Row */}
+      <div className="grid-2" style={{ marginBottom: 20 }}>
+        {/* Top Words Chart */}
+        <div className="panel">
+          <div className="panel-header">
+            <div className="panel-title">▤ Top Index Terms</div>
+            <span className="badge badge-info">{globalTopWords.length} terms</span>
+          </div>
+          <div className="panel-body">
+            {globalTopWords.length > 0 ? (
+              <>
+                <MiniBarChart data={globalTopWords} label="Top Words" color="var(--accent)" />
+                <div style={{ marginTop: 10 }}>
+                  {globalTopWords.slice(0, 6).map((w, i) => (
+                    <div key={i} className="word-bar-wrap">
+                      <div className="word-bar-label">{w.label}</div>
+                      <div className="word-bar-track">
+                        <div className="word-bar-fill" style={{ width: `${(w.value / globalTopWords[0].value) * 100}%` }} />
                       </div>
-                      <div className="mono text-xs" style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: '0.6rem' }}>
-                        {file.stats.wordCount.toLocaleString()} words
-                      </div>
+                      <div className="word-bar-count">{w.value}</div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    {file.stats.issues.length > 0 && (
-                      <span className="badge badge-rose">{file.stats.issues.length} issues</span>
-                    )}
-                    <span className="badge badge-cyan">{file.stats.sentiment.overall}</span>
-                  </div>
+                  ))}
                 </div>
-              ))}
+              </>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '20px', color: 'var(--text3)', fontSize: 12 }}>No word data yet</div>
+            )}
+          </div>
+        </div>
+
+        {/* Issues + Sentiment */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div className="panel" style={{ flex: 1 }}>
+            <div className="panel-header">
+              <div className="panel-title">⚠ Issues by File</div>
+              <span className="badge badge-danger">{highImpactIssues} critical+high</span>
+            </div>
+            <div className="panel-body">
+              {issuesByFile.length > 0 ? (
+                <MiniBarChart data={issuesByFile} label="Issues" color="var(--danger)" />
+              ) : (
+                <div style={{ textAlign: 'center', padding: 16, color: 'var(--text3)', fontSize: 12 }}>No issues detected</div>
+              )}
             </div>
           </div>
 
-          {/* Recent searches */}
-          {recentSearches.length > 0 && (
-            <div className="glass-card p-6">
-              <div className="flex items-center justify-between mb-5">
-                <h3 className="font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--text-primary)' }}>
-                  Recent Searches
-                </h3>
-                <button onClick={() => navigateTo('search')} className="btn-ghost text-xs">Search →</button>
+          <div className="panel" style={{ flex: 1 }}>
+            <div className="panel-header">
+              <div className="panel-title">✦ Sentiment Distribution</div>
+              <span className="badge badge-success">{sentimentTotals.pos} positive</span>
+            </div>
+            <div className="panel-body" style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <div style={{ width: 110, flexShrink: 0 }}>
+                <DonutChart positive={sentimentTotals.pos} negative={sentimentTotals.neg} neutral={sentimentTotals.neut} />
               </div>
-              <div className="space-y-2">
-                {recentSearches.map((h, i) => (
-                  <div key={i} className="flex items-center justify-between p-2.5 rounded-lg"
-                    style={{ background: 'rgba(13,21,32,0.5)', border: '1px solid rgba(30,58,95,0.3)' }}>
-                    <div className="flex items-center gap-2">
-                      <Search className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--text-muted)' }} />
-                      <span className="mono text-sm" style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', fontSize: '0.8rem' }}>
-                        &ldquo;{h.query}&rdquo;
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="badge badge-amber">{h.resultCount} hits</span>
-                      <span className="mono text-xs" style={{ color: 'var(--text-muted)', fontSize: '0.6rem', fontFamily: 'var(--font-mono)' }}>
-                        {h.timestamp instanceof Date
-                          ? h.timestamp.toLocaleTimeString()
-                          : new Date(h.timestamp).toLocaleTimeString()}
-                      </span>
-                    </div>
+              <div style={{ flex: 1 }}>
+                {[
+                  { label: 'Positive', count: sentimentTotals.pos, color: 'var(--accent)' },
+                  { label: 'Negative', count: sentimentTotals.neg, color: 'var(--danger)' },
+                  { label: 'Neutral', count: sentimentTotals.neut, color: 'var(--text3)' },
+                ].map((s, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: s.color, flexShrink: 0 }} />
+                    <div style={{ fontSize: 12, color: 'var(--text2)', flex: 1 }}>{s.label}</div>
+                    <div style={{ fontSize: 12, color: s.color, fontFamily: 'JetBrains Mono', fontWeight: 600 }}>{s.count}</div>
                   </div>
                 ))}
               </div>
             </div>
-          )}
-
-          {/* Issue distribution */}
-          {files.some(f => f.stats.issues.length > 0) && (
-            <div className="glass-card p-6">
-              <h3 className="font-bold mb-5" style={{ fontFamily: 'var(--font-display)', color: 'var(--text-primary)' }}>
-                Issue Breakdown
-              </h3>
-              <div className="space-y-3">
-                {(() => {
-                  const kw: Record<string, number> = {};
-                  files.forEach(f => f.stats.issues.forEach(issue => {
-                    kw[issue.keyword] = (kw[issue.keyword] || 0) + 1;
-                  }));
-                  const sorted = Object.entries(kw).sort((a, b) => b[1] - a[1]).slice(0, 8);
-                  const max = sorted[0]?.[1] || 1;
-                  return sorted.map(([word, count]) => (
-                    <div key={word} className="flex items-center gap-3">
-                      <span className="mono text-xs w-20 truncate"
-                        style={{ color: '#f43f5e', fontFamily: 'var(--font-mono)', fontSize: '0.72rem' }}>
-                        {word}
-                      </span>
-                      <div className="flex-1 progress-bar">
-                        <div className="progress-fill" style={{ width: `${(count/max)*100}%`, background: 'linear-gradient(90deg, #f43f5e, #f97316)' }} />
-                      </div>
-                      <span className="mono text-xs"
-                        style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', fontSize: '0.7rem', width: '24px', textAlign: 'right' }}>
-                        {count}
-                      </span>
-                    </div>
-                  ));
-                })()}
-              </div>
-            </div>
-          )}
+          </div>
         </div>
-      )}
+      </div>
+
+      {/* Files summary + Recent searches */}
+      <div className="grid-2">
+        {/* Files summary */}
+        <div className="panel">
+          <div className="panel-header">
+            <div className="panel-title">▦ Indexed Files</div>
+            <button className="btn btn-ghost btn-sm" onClick={() => navigate('files')} style={{ fontSize: 11 }}>View All →</button>
+          </div>
+          <div className="panel-body" style={{ padding: 0 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: 'rgba(0,255,157,0.04)' }}>
+                  {['File', 'Words', 'Issues', 'Sentiment'].map(h => (
+                    <th key={h} style={{ padding: '8px 14px', textAlign: 'left', fontSize: 10, color: 'var(--text3)', fontFamily: 'JetBrains Mono', letterSpacing: '0.08em', textTransform: 'uppercase', borderBottom: '1px solid var(--border)', fontWeight: 600 }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {files.slice(0, 6).map((f, i) => (
+                  <tr key={f.id} style={{ borderBottom: i < files.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
+                    <td style={{ padding: '9px 14px', fontSize: 12, color: 'var(--text)', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={f.name}>{f.name}</td>
+                    <td style={{ padding: '9px 14px', fontSize: 12, color: 'var(--accent)', fontFamily: 'JetBrains Mono' }}>{f.analysis.wordCount.toLocaleString()}</td>
+                    <td style={{ padding: '9px 14px' }}>
+                      <span className={`badge ${f.analysis.issues.length > 0 ? 'badge-danger' : 'badge-neutral'}`}>
+                        {f.analysis.issues.reduce((s, i) => s + i.count, 0)}
+                      </span>
+                    </td>
+                    <td style={{ padding: '9px 14px' }}>
+                      <span style={{ fontSize: 11, color: f.analysis.sentiment.score >= 15 ? 'var(--accent)' : f.analysis.sentiment.score <= -15 ? 'var(--danger)' : 'var(--text2)', fontFamily: 'JetBrains Mono' }}>
+                        {f.analysis.sentiment.label.split(' ').map(w => w[0]).join('')}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {files.length === 0 && (
+              <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}>No files indexed</div>
+            )}
+          </div>
+        </div>
+
+        {/* Recent Searches */}
+        <div className="panel">
+          <div className="panel-header">
+            <div className="panel-title">⌕ Recent Searches</div>
+            <span className="badge badge-info">{totalQueries} total</span>
+          </div>
+          <div className="panel-body">
+            {recentSearches.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '20px', color: 'var(--text3)', fontSize: 12 }}>
+                <div style={{ fontSize: 28, opacity: 0.3, marginBottom: 8 }}>⌕</div>
+                No searches yet
+              </div>
+            ) : (
+              recentSearches.map((s, i) => (
+                <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderBottom: i < recentSearches.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
+                  <span style={{ fontSize: 12, color: 'var(--text3)' }}>⌕</span>
+                  <div style={{ flex: 1, overflow: 'hidden' }}>
+                    <div style={{ fontSize: 12.5, color: 'var(--text)', fontFamily: 'JetBrains Mono', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>"{s.query}"</div>
+                    <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 1 }}>{s.resultCount} result{s.resultCount !== 1 ? 's' : ''} · {s.filesSearched} file{s.filesSearched !== 1 ? 's' : ''}</div>
+                  </div>
+                  <span className="badge badge-neutral" style={{ fontSize: 10 }}>{new Date(s.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                </div>
+              ))
+            )}
+            {recentSearches.length > 0 && (
+              <button className="btn btn-ghost btn-sm w-full" style={{ marginTop: 10 }} onClick={() => navigate('search')}>
+                Go to Search →
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

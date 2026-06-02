@@ -1,147 +1,164 @@
 'use client';
+// components/sections/FilesSection.tsx
+import React, { useState, useMemo } from 'react';
+import { useApp } from '../../lib/AppContext';
+import { formatBytes } from '../../lib/analyzer';
+import type { FileData } from '../../lib/types';
 
-import { useState } from 'react';
-import { useApp } from '../../lib/store';
-import { AnalyzedFile } from '../../lib/engine';
-import {
-  FileText, Trash2, Eye, AlertTriangle, TrendingUp, Search,
-  X, ChevronDown, ChevronUp, Upload, BookOpen
-} from 'lucide-react';
+type SortKey = 'name' | 'size' | 'words' | 'issues' | 'date' | 'readability' | 'sentiment';
 
-function FileAnalysisModal({ file, onClose }: { file: AnalyzedFile; onClose: () => void }) {
-  const [tab, setTab] = useState<'overview' | 'words' | 'issues' | 'content'>('overview');
+function FileModal({ file, onClose }: { file: FileData; onClose: () => void }) {
+  const [tab, setTab] = useState<'overview' | 'words' | 'issues' | 'content' | 'bigrams'>('overview');
+  const { dispatch, addNotification } = useApp();
 
-  const getSColor = (s: string) => s === 'positive' ? '#10b981' : s === 'negative' ? '#f43f5e' : '#94a3b8';
+  const handleDelete = () => {
+    dispatch({ type: 'DELETE_FILE', id: file.id });
+    addNotification('info', 'File Removed', `"${file.name}" removed from index.`);
+    onClose();
+  };
+
+  const exportAnalysis = () => {
+    const data = {
+      file: file.name,
+      size: formatBytes(file.size),
+      uploadedAt: new Date(file.uploadedAt).toISOString(),
+      analysis: {
+        wordCount: file.analysis.wordCount,
+        uniqueWordCount: file.analysis.uniqueWordCount,
+        lineCount: file.analysis.lineCount,
+        charCount: file.analysis.charCount,
+        sentenceCount: file.analysis.sentenceCount,
+        paragraphCount: file.analysis.paragraphCount,
+        lexicalDensity: file.analysis.lexicalDensity,
+        readability: file.analysis.readability,
+        sentiment: file.analysis.sentiment,
+        topWords: file.analysis.topWords,
+        topBigrams: file.analysis.topBigrams,
+        issues: file.analysis.issues,
+        mostUnusualWord: file.analysis.mostUnusualWord,
+        longestWord: file.analysis.longestWord,
+      },
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `${file.name}-analysis.json`; a.click();
+    URL.revokeObjectURL(url);
+    addNotification('success', 'Exported', `Analysis for "${file.name}" downloaded.`);
+  };
+
+  const TABS = [
+    { id: 'overview', label: 'Overview' },
+    { id: 'words', label: 'Word Frequency' },
+    { id: 'issues', label: `Issues (${file.analysis.issues.length})` },
+    { id: 'bigrams', label: 'Bigrams' },
+    { id: 'content', label: 'Content' },
+  ];
+
+  const readColor = file.analysis.readability.score >= 60 ? 'var(--accent)' : file.analysis.readability.score >= 40 ? 'var(--accent4)' : 'var(--danger)';
+  const sentColor = file.analysis.sentiment.score >= 15 ? 'var(--accent)' : file.analysis.sentiment.score <= -15 ? 'var(--danger)' : 'var(--text2)';
 
   return (
-    <div className="modal-backdrop" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal-content" style={{ maxWidth: '860px' }}>
-        {/* Header */}
-        <div className="flex items-start justify-between p-6 border-b" style={{ borderColor: 'rgba(30,58,95,0.6)' }}>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center"
-              style={{ background: 'rgba(6,182,212,0.1)', border: '1px solid rgba(6,182,212,0.3)' }}>
-              <FileText className="w-5 h-5" style={{ color: '#06b6d4' }} />
-            </div>
-            <div>
-              <h2 className="font-bold text-lg" style={{ fontFamily: 'var(--font-display)', color: 'var(--text-primary)' }}>
-                {file.name}
-              </h2>
-              <div className="mono text-xs" style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: '0.65rem' }}>
-                {(file.size / 1024).toFixed(1)}KB · {file.stats.wordCount.toLocaleString()} words · indexed {
-                  file.uploadedAt instanceof Date
-                    ? file.uploadedAt.toLocaleString()
-                    : new Date(file.uploadedAt).toLocaleString()
-                }
-              </div>
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal" style={{ maxWidth: 900 }}>
+        <div className="modal-header">
+          <div>
+            <div className="modal-title">{file.name}</div>
+            <div style={{ display: 'flex', gap: 6, marginTop: 5, flexWrap: 'wrap' }}>
+              <span className="badge badge-neutral">{formatBytes(file.size)}</span>
+              <span className="badge badge-info">{file.analysis.wordCount.toLocaleString()} words</span>
+              {file.tags.map(t => <span key={t} className={`badge ${t === 'critical' ? 'badge-danger' : t === 'positive' ? 'badge-success' : t === 'large' ? 'badge-purple' : 'badge-neutral'}`}>{t}</span>)}
             </div>
           </div>
-          <button onClick={onClose} className="p-2 rounded-lg transition-all"
-            style={{ background: 'rgba(30,58,95,0.3)', border: '1px solid rgba(30,58,95,0.5)', cursor: 'pointer' }}>
-            <X className="w-4 h-4" style={{ color: 'var(--text-secondary)' }} />
-          </button>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button className="btn btn-secondary btn-sm" onClick={exportAnalysis}><span>↓</span> Export JSON</button>
+            <button className="btn btn-danger btn-sm" onClick={handleDelete}><span>✕</span> Delete</button>
+            <button className="modal-close" onClick={onClose}>✕</button>
+          </div>
         </div>
 
-        {/* Tabs */}
-        <div className="flex border-b px-6" style={{ borderColor: 'rgba(30,58,95,0.4)' }}>
-          {[
-            { id: 'overview', label: 'Overview' },
-            { id: 'words', label: 'Word Analysis' },
-            { id: 'issues', label: `Issues (${file.stats.issues.length})` },
-            { id: 'content', label: 'Content' },
-          ].map(t => (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id as any)}
-              className="px-4 py-3 text-sm border-b-2 transition-all"
-              style={{
-                fontFamily: 'var(--font-mono)', fontSize: '0.72rem', letterSpacing: '0.05em',
-                borderColor: tab === t.id ? '#f59e0b' : 'transparent',
-                color: tab === t.id ? '#f59e0b' : 'var(--text-muted)',
-                background: 'none', cursor: 'pointer', marginBottom: '-1px',
-              }}
-            >
-              {t.label.toUpperCase()}
-            </button>
+        <div className="modal-tabs">
+          {TABS.map(t => (
+            <div key={t.id} className={`modal-tab${tab === t.id ? ' active' : ''}`} onClick={() => setTab(t.id as any)}>
+              {t.label}
+            </div>
           ))}
         </div>
 
-        {/* Tab content */}
-        <div className="p-6">
+        <div className="modal-body">
           {tab === 'overview' && (
-            <div className="space-y-6">
-              {/* Core stats grid */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div>
+              <div className="grid-4" style={{ marginBottom: 16 }}>
                 {[
-                  { label: 'Words', val: file.stats.wordCount.toLocaleString(), c: '#06b6d4' },
-                  { label: 'Lines', val: file.stats.lineCount.toLocaleString(), c: '#8b5cf6' },
-                  { label: 'Characters', val: file.stats.charCount.toLocaleString(), c: '#f59e0b' },
-                  { label: 'Sentences', val: file.stats.sentenceCount.toLocaleString(), c: '#10b981' },
-                  { label: 'Paragraphs', val: file.stats.paragraphCount, c: '#f97316' },
-                  { label: 'Unique Words', val: file.stats.uniqueWordCount.toLocaleString(), c: '#06b6d4' },
-                  { label: 'Avg Words/Line', val: file.stats.avgWordsPerLine.toFixed(1), c: '#8b5cf6' },
-                  { label: 'Lexical Density', val: `${file.stats.lexicalDensity.toFixed(1)}%`, c: '#f59e0b' },
-                ].map(s => (
-                  <div key={s.label} className="p-3 rounded-lg text-center"
-                    style={{ background: 'rgba(13,21,32,0.7)', border: '1px solid rgba(30,58,95,0.4)' }}>
-                    <div className="mono text-xl font-bold" style={{ color: s.c, fontFamily: 'var(--font-mono)' }}>{s.val}</div>
-                    <div className="text-xs mt-0.5" style={{ color: 'var(--text-muted)', fontSize: '0.6rem' }}>{s.label}</div>
+                  { k: 'Words', v: file.analysis.wordCount.toLocaleString() },
+                  { k: 'Unique Words', v: file.analysis.uniqueWordCount.toLocaleString() },
+                  { k: 'Lines', v: file.analysis.lineCount.toLocaleString() },
+                  { k: 'Characters', v: file.analysis.charCount.toLocaleString() },
+                  { k: 'Sentences', v: file.analysis.sentenceCount.toLocaleString() },
+                  { k: 'Paragraphs', v: file.analysis.paragraphCount.toLocaleString() },
+                  { k: 'URLs', v: file.analysis.urlCount },
+                  { k: 'Numbers', v: file.analysis.numberCount },
+                ].map((s, i) => (
+                  <div key={i} style={{ background: 'rgba(0,0,0,0.25)', borderRadius: 8, padding: '10px 14px', textAlign: 'center', border: '1px solid var(--border)' }}>
+                    <div style={{ fontSize: 20, fontFamily: 'Syne', fontWeight: 700, color: 'var(--accent)', marginBottom: 3 }}>{s.v}</div>
+                    <div style={{ fontSize: 10, color: 'var(--text3)', fontFamily: 'JetBrains Mono', textTransform: 'uppercase' }}>{s.k}</div>
                   </div>
                 ))}
               </div>
 
-              {/* Readability + Sentiment */}
-              <div className="grid md:grid-cols-3 gap-4">
-                <div className="p-4 rounded-xl" style={{ background: 'rgba(13,21,32,0.7)', border: '1px solid rgba(30,58,95,0.4)' }}>
-                  <div className="text-xs font-semibold mb-3" style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', letterSpacing: '0.1em' }}>READABILITY</div>
-                  <div className="mono text-3xl font-bold mb-1" style={{ color: '#f59e0b', fontFamily: 'var(--font-mono)' }}>
-                    {file.stats.readability.fleschKincaid.toFixed(0)}
-                  </div>
-                  <div className="text-sm font-medium mb-2" style={{ color: '#06b6d4' }}>{file.stats.readability.grade}</div>
-                  <div className="space-y-1">
-                    <div className="flex justify-between mono text-xs" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem' }}>
-                      <span style={{ color: 'var(--text-muted)' }}>Avg words/sentence</span>
-                      <span style={{ color: 'var(--text-secondary)' }}>{file.stats.readability.avgWordsPerSentence.toFixed(1)}</span>
+              <div className="grid-2">
+                <div>
+                  <div style={{ fontSize: 11, color: 'var(--text3)', fontFamily: 'JetBrains Mono', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.08em' }}>READABILITY</div>
+                  <div style={{ background: 'rgba(0,0,0,0.2)', borderRadius: 8, padding: '14px', border: '1px solid var(--border)' }}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 10 }}>
+                      <span style={{ fontSize: 28, fontFamily: 'Syne', fontWeight: 800, color: readColor }}>{file.analysis.readability.score}</span>
+                      <span style={{ fontSize: 13, color: readColor }}>/ 100 · {file.analysis.readability.level}</span>
                     </div>
-                    <div className="flex justify-between mono text-xs" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem' }}>
-                      <span style={{ color: 'var(--text-muted)' }}>Avg chars/word</span>
-                      <span style={{ color: 'var(--text-secondary)' }}>{file.stats.readability.avgCharsPerWord.toFixed(1)}</span>
+                    <div className="progress-wrap" style={{ marginBottom: 12 }}>
+                      <div className="progress-bar" style={{ width: `${file.analysis.readability.score}%`, background: `linear-gradient(90deg, ${readColor}, ${readColor}88)` }} />
                     </div>
-                  </div>
-                </div>
-
-                <div className="p-4 rounded-xl" style={{ background: 'rgba(13,21,32,0.7)', border: '1px solid rgba(30,58,95,0.4)' }}>
-                  <div className="text-xs font-semibold mb-3" style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', letterSpacing: '0.1em' }}>SENTIMENT</div>
-                  <div className="font-bold text-xl mb-2" style={{ color: getSColor(file.stats.sentiment.overall) }}>
-                    {file.stats.sentiment.overall.toUpperCase()}
-                  </div>
-                  <div className="sentiment-track mb-2">
-                    <div style={{
-                      height: '100%', borderRadius: '4px',
-                      width: `${Math.min(100, Math.abs(file.stats.sentiment.score) * 100)}%`,
-                      background: getSColor(file.stats.sentiment.overall),
-                    }} />
-                  </div>
-                  <div className="flex justify-between mono text-xs" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem' }}>
-                    <span style={{ color: '#10b981' }}>+{file.stats.sentiment.positive} positive</span>
-                    <span style={{ color: '#f43f5e' }}>-{file.stats.sentiment.negative} negative</span>
-                  </div>
-                </div>
-
-                <div className="p-4 rounded-xl" style={{ background: 'rgba(13,21,32,0.7)', border: '1px solid rgba(30,58,95,0.4)' }}>
-                  <div className="text-xs font-semibold mb-3" style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', letterSpacing: '0.1em' }}>WORD INSIGHTS</div>
-                  <div className="space-y-2">
                     {[
-                      { label: 'Longest word', val: file.stats.longestWord || '—', c: '#8b5cf6' },
-                      { label: 'Shortest word', val: file.stats.shortestWord || '—', c: '#06b6d4' },
-                      { label: 'Most unusual', val: file.stats.mostUnusualWord || '—', c: '#f97316' },
-                      { label: 'Type-token ratio', val: `${(file.stats.typeTokenRatio*100).toFixed(1)}%`, c: '#f59e0b' },
-                    ].map(row => (
-                      <div key={row.label} className="flex justify-between">
-                        <span className="mono text-xs" style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: '0.65rem' }}>{row.label}</span>
-                        <span className="mono text-xs font-medium" style={{ color: row.c, fontFamily: 'var(--font-mono)', fontSize: '0.72rem' }}>{row.val}</span>
+                      { k: 'Avg Words/Sentence', v: file.analysis.readability.avgWordsPerSentence },
+                      { k: 'Avg Chars/Word', v: file.analysis.readability.avgCharsPerWord },
+                      { k: 'Lexical Density', v: file.analysis.lexicalDensity + '%' },
+                      { k: 'Avg Words/Line', v: file.analysis.avgWordsPerLine },
+                    ].map((s, i) => (
+                      <div key={i} className="stat-row">
+                        <span className="stat-key">{s.k}</span>
+                        <span className="stat-val" style={{ fontFamily: 'JetBrains Mono', fontSize: 13, color: 'var(--accent2)' }}>{s.v}</span>
                       </div>
                     ))}
+                  </div>
+                </div>
+
+                <div>
+                  <div style={{ fontSize: 11, color: 'var(--text3)', fontFamily: 'JetBrains Mono', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.08em' }}>SENTIMENT</div>
+                  <div style={{ background: 'rgba(0,0,0,0.2)', borderRadius: 8, padding: '14px', border: '1px solid var(--border)' }}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 10 }}>
+                      <span style={{ fontSize: 18, fontFamily: 'Syne', fontWeight: 800, color: sentColor }}>{file.analysis.sentiment.label}</span>
+                      <span style={{ fontSize: 12, color: 'var(--text3)', fontFamily: 'JetBrains Mono' }}>score: {file.analysis.sentiment.score > 0 ? '+' : ''}{file.analysis.sentiment.score}</span>
+                    </div>
+                    {[
+                      { k: 'Positive Words', v: file.analysis.sentiment.positiveCount, c: 'var(--accent)' },
+                      { k: 'Negative Words', v: file.analysis.sentiment.negativeCount, c: 'var(--danger)' },
+                    ].map((s, i) => (
+                      <div key={i} className="stat-row">
+                        <span className="stat-key">{s.k}</span>
+                        <span className="stat-val" style={{ fontFamily: 'JetBrains Mono', fontSize: 13, color: s.c }}>{s.v}</span>
+                      </div>
+                    ))}
+                    {file.analysis.sentiment.positiveWords.length > 0 && (
+                      <div style={{ marginTop: 10, fontSize: 11, color: 'var(--text3)', fontFamily: 'JetBrains Mono', lineHeight: 1.8 }}>
+                        <span style={{ color: 'var(--accent)' }}>+ </span>{file.analysis.sentiment.positiveWords.join(', ')}<br />
+                        {file.analysis.sentiment.negativeWords.length > 0 && <><span style={{ color: 'var(--danger)' }}>− </span>{file.analysis.sentiment.negativeWords.join(', ')}</>}
+                      </div>
+                    )}
+                    {file.analysis.mostUnusualWord && (
+                      <div className="stat-row" style={{ marginTop: 8 }}>
+                        <span className="stat-key">Most Unusual Word</span>
+                        <span style={{ fontFamily: 'JetBrains Mono', fontSize: 12, color: 'var(--accent3)', fontWeight: 600 }}>{file.analysis.mostUnusualWord}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -150,104 +167,97 @@ function FileAnalysisModal({ file, onClose }: { file: AnalyzedFile; onClose: () 
 
           {tab === 'words' && (
             <div>
-              <div className="text-xs font-semibold mb-4"
-                style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', letterSpacing: '0.1em' }}>
-                TOP 20 MOST FREQUENT WORDS
+              <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 14, fontFamily: 'JetBrains Mono' }}>
+                {file.analysis.topWords.length} unique content terms (stopwords {file.analysis.topWords.length > 0 ? 'filtered' : 'not applicable'})
               </div>
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>Word</th>
-                    <th>Count</th>
-                    <th>Frequency</th>
-                    <th>% of Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {file.stats.topWords.slice(0, 20).map((w, i) => {
-                    const max = file.stats.topWords[0]?.count || 1;
-                    return (
-                      <tr key={w.word}>
-                        <td className="mono" style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: '0.72rem' }}>{i+1}</td>
-                        <td className="mono font-medium" style={{ color: '#f59e0b', fontFamily: 'var(--font-mono)' }}>{w.word}</td>
-                        <td className="mono" style={{ fontFamily: 'var(--font-mono)' }}>{w.count}</td>
-                        <td style={{ width: '200px' }}>
-                          <div className="progress-bar">
-                            <div className="word-freq-bar" style={{ width: `${(w.count/max)*100}%` }} />
-                          </div>
-                        </td>
-                        <td className="mono text-xs" style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
-                          {((w.count/file.stats.wordCount)*100).toFixed(2)}%
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+              {file.analysis.topWords.map((w, i) => (
+                <div key={i} className="word-bar-wrap" style={{ marginBottom: 8 }}>
+                  <div style={{ width: 24, fontSize: 10, color: 'var(--text3)', fontFamily: 'JetBrains Mono', textAlign: 'right', marginRight: 4 }}>#{i + 1}</div>
+                  <div className="word-bar-label" style={{ width: 120 }}>{w.word}</div>
+                  <div className="word-bar-track">
+                    <div className="word-bar-fill" style={{ width: `${(w.count / file.analysis.topWords[0].count) * 100}%` }} />
+                  </div>
+                  <div className="word-bar-count" style={{ width: 60 }}>{w.count}</div>
+                  <div style={{ width: 40, fontSize: 10, color: 'var(--text3)', fontFamily: 'JetBrains Mono', textAlign: 'right' }}>{w.percentage}%</div>
+                </div>
+              ))}
             </div>
           )}
 
           {tab === 'issues' && (
             <div>
-              {file.stats.issues.length === 0 ? (
-                <div className="text-center py-12">
-                  <div className="w-12 h-12 rounded-xl flex items-center justify-center mx-auto mb-3"
-                    style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)' }}>
-                    <TrendingUp className="w-6 h-6" style={{ color: '#10b981' }} />
-                  </div>
-                  <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>No high-impact issues detected.</p>
-                  <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>This file looks clean!</p>
+              {file.analysis.issues.length === 0 ? (
+                <div className="empty-state">
+                  <div className="empty-icon" style={{ fontSize: 36 }}>✓</div>
+                  <div className="empty-title" style={{ fontSize: 16 }}>No Issues Detected</div>
+                  <div className="empty-desc">This file passed all 25 pattern checks.</div>
                 </div>
               ) : (
-                <div>
-                  <div className="flex items-center gap-2 mb-4 p-3 rounded-lg"
-                    style={{ background: 'rgba(244,63,94,0.08)', border: '1px solid rgba(244,63,94,0.2)' }}>
-                    <AlertTriangle className="w-4 h-4" style={{ color: '#f43f5e' }} />
-                    <span className="text-sm font-semibold" style={{ color: '#f43f5e' }}>
-                      {file.stats.issues.length} issues found
-                    </span>
+                <>
+                  <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+                    {(['critical', 'high', 'medium', 'low'] as const).map(sev => {
+                      const count = file.analysis.issues.filter(i => i.severity === sev).length;
+                      if (count === 0) return null;
+                      return (
+                        <span key={sev} className={`badge badge-${sev === 'critical' || sev === 'high' ? 'danger' : sev === 'medium' ? 'warning' : 'info'}`}>
+                          {count} {sev}
+                        </span>
+                      );
+                    })}
                   </div>
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th>Keyword</th>
-                        <th>Line</th>
-                        <th>Col</th>
-                        <th>Context</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {file.stats.issues.map((issue, i) => (
-                        <tr key={i}>
-                          <td><span className="badge badge-rose">{issue.keyword}</span></td>
-                          <td className="mono" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem' }}>{issue.line}</td>
-                          <td className="mono" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem' }}>{issue.col}</td>
-                          <td className="mono text-xs" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.68rem', color: 'var(--text-secondary)', maxWidth: '300px' }}>
-                            <span className="truncate block" title={issue.context}>{issue.context}</span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                  <div className="table-wrap">
+                    <table>
+                      <thead><tr><th>Severity</th><th>Pattern</th><th>Occurrences</th><th>Lines</th></tr></thead>
+                      <tbody>
+                        {file.analysis.issues.map((issue, i) => (
+                          <tr key={i}>
+                            <td>
+                              <span className={`badge badge-${issue.severity === 'critical' || issue.severity === 'high' ? 'danger' : issue.severity === 'medium' ? 'warning' : 'info'}`}>
+                                {issue.severity}
+                              </span>
+                            </td>
+                            <td style={{ fontFamily: 'JetBrains Mono', fontSize: 13, color: 'var(--text)' }}>"{issue.keyword}"</td>
+                            <td style={{ fontFamily: 'JetBrains Mono', color: 'var(--accent)', fontWeight: 600 }}>{issue.count}</td>
+                            <td style={{ fontFamily: 'JetBrains Mono', fontSize: 11, color: 'var(--text3)' }}>
+                              {issue.lineNumbers.slice(0, 5).join(', ')}{issue.lineNumbers.length > 5 ? ` +${issue.lineNumbers.length - 5}` : ''}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {tab === 'bigrams' && (
+            <div>
+              <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 14, fontFamily: 'JetBrains Mono' }}>Most frequent two-word phrases (stopwords excluded)</div>
+              {file.analysis.topBigrams.length === 0 ? (
+                <div className="empty-state"><div className="empty-desc">Not enough content for bigrams</div></div>
+              ) : (
+                file.analysis.topBigrams.map((b, i) => (
+                  <div key={i} className="word-bar-wrap" style={{ marginBottom: 8 }}>
+                    <div style={{ width: 24, fontSize: 10, color: 'var(--text3)', fontFamily: 'JetBrains Mono', textAlign: 'right', marginRight: 4 }}>#{i + 1}</div>
+                    <div style={{ width: 200, fontSize: 12, color: 'var(--text)', fontFamily: 'JetBrains Mono', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>"{b.phrase}"</div>
+                    <div className="word-bar-track">
+                      <div className="word-bar-fill" style={{ width: `${(b.count / file.analysis.topBigrams[0].count) * 100}%`, background: 'linear-gradient(90deg, var(--accent3), var(--accent2))' }} />
+                    </div>
+                    <div className="word-bar-count">{b.count}×</div>
+                  </div>
+                ))
               )}
             </div>
           )}
 
           {tab === 'content' && (
             <div>
-              <div className="text-xs font-semibold mb-3"
-                style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', letterSpacing: '0.1em' }}>
-                FULL CONTENT PREVIEW
+              <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 10, fontFamily: 'JetBrains Mono' }}>
+                Showing first 3000 characters of {file.analysis.charCount.toLocaleString()} total
               </div>
-              <div className="p-4 rounded-xl mono text-xs leading-relaxed"
-                style={{
-                  background: 'rgba(8,12,20,0.8)', border: '1px solid rgba(30,58,95,0.4)',
-                  color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', fontSize: '0.75rem',
-                  whiteSpace: 'pre-wrap', maxHeight: '400px', overflowY: 'auto', lineHeight: '1.7'
-                }}>
-                {file.content}
+              <div className="code" style={{ maxHeight: 360, overflowY: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                {file.content.slice(0, 3000)}{file.content.length > 3000 ? '\n\n[… truncated for display]' : ''}
               </div>
             </div>
           )}
@@ -257,173 +267,180 @@ function FileAnalysisModal({ file, onClose }: { file: AnalyzedFile; onClose: () 
   );
 }
 
-export function FilesSection() {
-  const { state, deleteFile, dispatch, navigateTo } = useApp();
+export default function FilesSection() {
+  const { state, dispatch, addNotification, navigate } = useApp();
   const { files } = state;
-  const [selectedModal, setSelectedModal] = useState<AnalyzedFile | null>(null);
-  const [sortBy, setSortBy] = useState<'name' | 'size' | 'words' | 'issues' | 'date'>('date');
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [sortKey, setSortKey] = useState<SortKey>('date');
+  const [sortAsc, setSortAsc] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<FileData | null>(null);
+  const [filterText, setFilterText] = useState('');
+  const [selectedSeverity, setSelectedSeverity] = useState<string>('all');
 
-  const sorted = [...files].sort((a, b) => {
-    let va: number | string = 0, vb: number | string = 0;
-    if (sortBy === 'name') { va = a.name; vb = b.name; }
-    else if (sortBy === 'size') { va = a.size; vb = b.size; }
-    else if (sortBy === 'words') { va = a.stats.wordCount; vb = b.stats.wordCount; }
-    else if (sortBy === 'issues') { va = a.stats.issues.length; vb = b.stats.issues.length; }
-    else if (sortBy === 'date') { va = new Date(a.uploadedAt).getTime(); vb = new Date(b.uploadedAt).getTime(); }
-    if (typeof va === 'string') return sortDir === 'asc' ? va.localeCompare(vb as string) : (vb as string).localeCompare(va);
-    return sortDir === 'asc' ? (va as number) - (vb as number) : (vb as number) - (va as number);
-  });
-
-  const toggleSort = (col: typeof sortBy) => {
-    if (sortBy === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
-    else { setSortBy(col); setSortDir('desc'); }
+  const handleSort = (key: SortKey) => {
+    if (sortKey === key) setSortAsc(!sortAsc);
+    else { setSortKey(key); setSortAsc(false); }
   };
 
-  const SortIcon = ({ col }: { col: typeof sortBy }) =>
-    sortBy === col ? (sortDir === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />) : null;
+  const sortedFiles = useMemo(() => {
+    let filtered = files.filter(f => f.name.toLowerCase().includes(filterText.toLowerCase()));
+    if (selectedSeverity !== 'all') {
+      filtered = filtered.filter(f => f.analysis.issues.some(i => i.severity === selectedSeverity));
+    }
+    return [...filtered].sort((a, b) => {
+      let diff = 0;
+      if (sortKey === 'name') diff = a.name.localeCompare(b.name);
+      else if (sortKey === 'size') diff = a.size - b.size;
+      else if (sortKey === 'words') diff = a.analysis.wordCount - b.analysis.wordCount;
+      else if (sortKey === 'issues') diff = a.analysis.issues.reduce((s, i) => s + i.count, 0) - b.analysis.issues.reduce((s, i) => s + i.count, 0);
+      else if (sortKey === 'date') diff = a.uploadedAt - b.uploadedAt;
+      else if (sortKey === 'readability') diff = a.analysis.readability.score - b.analysis.readability.score;
+      else if (sortKey === 'sentiment') diff = a.analysis.sentiment.score - b.analysis.sentiment.score;
+      return sortAsc ? diff : -diff;
+    });
+  }, [files, sortKey, sortAsc, filterText, selectedSeverity]);
 
-  const getSColor = (s: string) => s === 'positive' ? '#10b981' : s === 'negative' ? '#f43f5e' : '#94a3b8';
+  const deleteAll = () => {
+    files.forEach(f => dispatch({ type: 'DELETE_FILE', id: f.id }));
+    addNotification('info', 'All Files Removed', 'Session cleared.');
+  };
+
+  const exportAll = () => {
+    const data = files.map(f => ({
+      name: f.name, size: formatBytes(f.size), words: f.analysis.wordCount,
+      uniqueWords: f.analysis.uniqueWordCount, lines: f.analysis.lineCount,
+      readability: f.analysis.readability.score, readabilityLevel: f.analysis.readability.level,
+      sentiment: f.analysis.sentiment.label, sentimentScore: f.analysis.sentiment.score,
+      issues: f.analysis.issues.length, topWords: f.analysis.topWords.slice(0, 5).map(w => w.word),
+    }));
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'smartquery-all-files.json'; a.click();
+    URL.revokeObjectURL(url);
+    addNotification('success', 'Exported', `${files.length} file analyses exported.`);
+  };
+
+  const SortTh = ({ k, label }: { k: SortKey; label: string }) => (
+    <th onClick={() => handleSort(k)} style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}>
+      {label} {sortKey === k ? (sortAsc ? '↑' : '↓') : ''}
+    </th>
+  );
+
+  if (files.length === 0) {
+    return (
+      <div>
+        <div className="section-header">
+          <div>
+            <div className="section-title"><span className="section-icon">▦</span> My Files</div>
+            <div className="section-subtitle">Manage and analyze all indexed files</div>
+          </div>
+        </div>
+        <div className="empty-state card">
+          <div className="empty-icon">▦</div>
+          <div className="empty-title">No Files Indexed</div>
+          <div className="empty-desc">Upload .txt files to see them here with full analysis and management tools.</div>
+          <button className="btn btn-primary" onClick={() => navigate('upload')}><span>↑</span> Upload Files</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-8">
-      {/* Header */}
-      <div className="flex items-start justify-between">
+    <div>
+      {selectedFile && <FileModal file={selectedFile} onClose={() => setSelectedFile(null)} />}
+
+      <div className="section-header">
         <div>
-          <div className="section-subtitle mb-1">Document Library</div>
-          <h1 className="section-title">My Files</h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
-            {files.length} file{files.length !== 1 ? 's' : ''} indexed · click to view full analysis
-          </p>
+          <div className="section-title"><span className="section-icon">▦</span> My Files</div>
+          <div className="section-subtitle">{files.length} file{files.length !== 1 ? 's' : ''} indexed — click any row for detailed analysis</div>
         </div>
-        <button onClick={() => navigateTo('upload')} className="btn-primary flex items-center gap-1.5">
-          <Upload className="w-4 h-4" /> Upload More
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-secondary btn-sm" onClick={exportAll}><span>↓</span> Export All</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => navigate('upload')}><span>↑</span> Add Files</button>
+          <button className="btn btn-danger btn-sm" onClick={deleteAll}><span>✕</span> Clear All</button>
+        </div>
       </div>
 
-      {files.length === 0 ? (
-        <div className="glass-card p-16 text-center">
-          <BookOpen className="w-12 h-12 mx-auto mb-4" style={{ color: 'var(--text-muted)', opacity: 0.4 }} />
-          <h3 className="text-xl font-bold mb-3" style={{ fontFamily: 'var(--font-display)', color: 'var(--text-primary)' }}>
-            No files indexed
-          </h3>
-          <p className="text-sm mb-6" style={{ color: 'var(--text-secondary)' }}>Upload .txt files to start analyzing.</p>
-          <button onClick={() => navigateTo('upload')} className="btn-primary">Upload Files</button>
+      {/* Filter bar */}
+      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
+          <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text3)', fontSize: 14 }}>⌕</span>
+          <input className="input" value={filterText} onChange={e => setFilterText(e.target.value)} placeholder="Filter by file name…" style={{ paddingLeft: 34 }} />
         </div>
-      ) : (
-        <div className="glass-card overflow-hidden">
-          {/* Table header */}
-          <div className="grid gap-4 px-5 py-3 border-b" style={{ borderColor: 'rgba(30,58,95,0.5)', gridTemplateColumns: '2fr 80px 80px 80px 100px 120px 140px' }}>
-            {[
-              { label: 'File Name', col: 'name' as const },
-              { label: 'Size', col: 'size' as const },
-              { label: 'Words', col: 'words' as const },
-              { label: 'Issues', col: 'issues' as const },
-              { label: 'Sentiment', col: undefined },
-              { label: 'Readability', col: undefined },
-              { label: 'Actions', col: undefined },
-            ].map(({ label, col }) => (
-              <div
-                key={label}
-                className="mono text-xs flex items-center gap-1"
-                style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: '0.62rem', letterSpacing: '0.08em', cursor: col ? 'pointer' : 'default' }}
-                onClick={() => col && toggleSort(col)}
-              >
-                {label.toUpperCase()}
-                {col && <SortIcon col={col} />}
-              </div>
-            ))}
-          </div>
+        <select className="input" style={{ width: 160 }} value={selectedSeverity} onChange={e => setSelectedSeverity(e.target.value)}>
+          <option value="all">All Issues</option>
+          <option value="critical">Critical Issues</option>
+          <option value="high">High Issues</option>
+          <option value="medium">Medium Issues</option>
+          <option value="low">Low Issues</option>
+        </select>
+        <span className="badge badge-neutral">{sortedFiles.length} of {files.length}</span>
+      </div>
 
-          {/* Rows */}
-          {sorted.map(file => (
-            <div
-              key={file.id}
-              className="grid gap-4 px-5 py-4 border-b transition-all hover:bg-amber-400/3 group"
-              style={{ borderColor: 'rgba(30,58,95,0.3)', gridTemplateColumns: '2fr 80px 80px 80px 100px 120px 140px', alignItems: 'center' }}
-            >
-              {/* Name */}
-              <div className="flex items-center gap-2 min-w-0">
-                <FileText className="w-4 h-4 flex-shrink-0"
-                  style={{ color: file.stats.issues.length > 0 ? '#f43f5e' : '#06b6d4' }} />
-                <div className="min-w-0">
-                  <div className="text-sm truncate font-medium" style={{ color: 'var(--text-primary)' }} title={file.name}>
-                    {file.name}
-                  </div>
-                  <div className="mono text-xs" style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: '0.6rem' }}>
-                    {file.queryCount > 0 && `${file.queryCount} searches · `}
-                    {file.uploadedAt instanceof Date
-                      ? file.uploadedAt.toLocaleDateString()
-                      : new Date(file.uploadedAt).toLocaleDateString()}
-                  </div>
-                </div>
-              </div>
-
-              {/* Size */}
-              <div className="mono text-xs" style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', fontSize: '0.72rem' }}>
-                {file.size < 1024 ? `${file.size}B` : `${(file.size/1024).toFixed(1)}KB`}
-              </div>
-
-              {/* Words */}
-              <div className="mono text-xs" style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', fontSize: '0.72rem' }}>
-                {file.stats.wordCount.toLocaleString()}
-              </div>
-
-              {/* Issues */}
-              <div>
-                {file.stats.issues.length > 0
-                  ? <span className="badge badge-rose">{file.stats.issues.length}</span>
-                  : <span className="mono text-xs" style={{ color: '#10b981', fontFamily: 'var(--font-mono)', fontSize: '0.65rem' }}>clean</span>
-                }
-              </div>
-
-              {/* Sentiment */}
-              <div>
-                <span className="badge" style={{
-                  background: `${getSColor(file.stats.sentiment.overall)}15`,
-                  color: getSColor(file.stats.sentiment.overall),
-                  border: `1px solid ${getSColor(file.stats.sentiment.overall)}30`,
-                  fontSize: '0.6rem'
-                }}>
-                  {file.stats.sentiment.overall}
-                </span>
-              </div>
-
-              {/* Readability */}
-              <div className="mono text-xs" style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: '0.65rem' }}>
-                {file.stats.readability.fleschKincaid.toFixed(0)} · {file.stats.readability.grade.split(' ')[0]}
-              </div>
-
-              {/* Actions */}
-              <div className="flex items-center gap-1.5">
-                <button
-                  onClick={() => setSelectedModal(file)}
-                  className="flex items-center gap-1 px-2 py-1.5 rounded-lg transition-all"
-                  style={{ background: 'rgba(6,182,212,0.1)', border: '1px solid rgba(6,182,212,0.3)', color: '#06b6d4', cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: '0.62rem' }}
-                >
-                  <Eye className="w-3 h-3" /> View
-                </button>
-                <button
-                  onClick={() => { dispatch({ type: 'SELECT_FILE', payload: file }); navigateTo('search'); }}
-                  className="flex items-center gap-1 px-2 py-1.5 rounded-lg transition-all"
-                  style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', color: '#f59e0b', cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: '0.62rem' }}
-                >
-                  <Search className="w-3 h-3" />
-                </button>
-                <button
-                  onClick={() => deleteFile(file.id)}
-                  className="flex items-center gap-1 px-2 py-1.5 rounded-lg transition-all"
-                  style={{ background: 'rgba(244,63,94,0.08)', border: '1px solid rgba(244,63,94,0.2)', color: '#f43f5e', cursor: 'pointer' }}
-                >
-                  <Trash2 className="w-3 h-3" />
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {selectedModal && <FileAnalysisModal file={selectedModal} onClose={() => setSelectedModal(null)} />}
+      {/* Table */}
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <SortTh k="name" label="File Name" />
+              <SortTh k="size" label="Size" />
+              <SortTh k="words" label="Words" />
+              <SortTh k="readability" label="Readability" />
+              <SortTh k="sentiment" label="Sentiment" />
+              <SortTh k="issues" label="Issues" />
+              <SortTh k="date" label="Uploaded" />
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sortedFiles.map((file, idx) => {
+              const issueCount = file.analysis.issues.reduce((s, i) => s + i.count, 0);
+              const readColor = file.analysis.readability.score >= 60 ? 'var(--accent)' : file.analysis.readability.score >= 40 ? 'var(--accent4)' : 'var(--danger)';
+              const sentColor = file.analysis.sentiment.score >= 15 ? 'var(--accent)' : file.analysis.sentiment.score <= -15 ? 'var(--danger)' : 'var(--text2)';
+              return (
+                <tr key={file.id} style={{ cursor: 'pointer', animationDelay: `${idx * 0.03}s` }} onClick={() => setSelectedFile(file)}>
+                  <td style={{ maxWidth: 180 }}>
+                    <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500, color: 'var(--text)' }} title={file.name}>{file.name}</div>
+                    <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>{file.analysis.uniqueWordCount.toLocaleString()} unique terms</div>
+                  </td>
+                  <td style={{ fontFamily: 'JetBrains Mono', fontSize: 12, color: 'var(--text2)' }}>{formatBytes(file.size)}</td>
+                  <td style={{ fontFamily: 'JetBrains Mono', color: 'var(--accent)' }}>{file.analysis.wordCount.toLocaleString()}</td>
+                  <td>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <div style={{ width: 32, height: 32, borderRadius: '50%', background: `conic-gradient(${readColor} ${file.analysis.readability.score * 3.6}deg, rgba(255,255,255,0.06) 0)`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'var(--bg2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontFamily: 'JetBrains Mono', color: readColor, fontWeight: 700 }}>
+                          {file.analysis.readability.score}
+                        </div>
+                      </div>
+                      <span style={{ fontSize: 11, color: readColor }}>{file.analysis.readability.level}</span>
+                    </div>
+                  </td>
+                  <td>
+                    <span style={{ fontSize: 12, color: sentColor, fontFamily: 'JetBrains Mono', fontWeight: 600 }}>
+                      {file.analysis.sentiment.score > 0 ? '+' : ''}{file.analysis.sentiment.score}
+                    </span>
+                    <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 1 }}>{file.analysis.sentiment.label.split(' ').slice(-1)[0]}</div>
+                  </td>
+                  <td>
+                    <span className={`badge ${issueCount === 0 ? 'badge-success' : issueCount < 5 ? 'badge-warning' : 'badge-danger'}`}>
+                      {issueCount}
+                    </span>
+                  </td>
+                  <td style={{ fontSize: 11, color: 'var(--text3)', fontFamily: 'JetBrains Mono' }}>
+                    {new Date(file.uploadedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </td>
+                  <td onClick={e => e.stopPropagation()}>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button className="btn btn-secondary btn-sm" onClick={() => setSelectedFile(file)} style={{ fontSize: 11 }}>Analyze</button>
+                      <button className="btn btn-danger btn-sm" style={{ fontSize: 11, padding: '4px 8px' }}
+                        onClick={() => { dispatch({ type: 'DELETE_FILE', id: file.id }); addNotification('info', 'Deleted', `"${file.name}" removed.`); }}>✕</button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

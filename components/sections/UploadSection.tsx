@@ -1,354 +1,399 @@
 'use client';
+// components/sections/UploadSection.tsx
+import React, { useState, useRef, useCallback } from 'react';
+import { useApp } from '../../lib/AppContext';
+import { analyzeFile, generateId, formatBytes } from '../../lib/analyzer';
+import type { FileData } from '../../lib/types';
 
-import { useCallback, useRef, useState } from 'react';
-import { useApp } from '../../lib/store';
-import { Upload, FileText, CheckCircle, AlertTriangle, X, Plus, Zap } from 'lucide-react';
-import { analyzeFile, AnalyzedFile } from '../../lib/engine';
-
-interface PreviewResult {
-  file: File;
-  analyzed: AnalyzedFile;
+interface UploadResult {
+  file: FileData;
+  status: 'success' | 'error';
+  error?: string;
 }
 
-export function UploadSection() {
-  const { addFile, state, navigateTo } = useApp();
+function ReadabilityGauge({ score, level }: { score: number; level: string }) {
+  const color = score >= 60 ? 'var(--accent)' : score >= 40 ? 'var(--accent4)' : 'var(--danger)';
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, fontSize: 12, fontFamily: 'JetBrains Mono' }}>
+        <span style={{ color: 'var(--text2)' }}>Readability Score</span>
+        <span style={{ color }}>{score}/100 · {level}</span>
+      </div>
+      <div className="progress-wrap">
+        <div className="progress-bar" style={{ width: `${score}%`, background: `linear-gradient(90deg, ${color}, ${color}99)` }} />
+      </div>
+    </div>
+  );
+}
+
+function SentimentBar({ pos, neg, total }: { pos: number; neg: number; total: number }) {
+  const posW = total > 0 ? (pos / total) * 100 : 0;
+  const negW = total > 0 ? (neg / total) * 100 : 0;
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, fontSize: 12, fontFamily: 'JetBrains Mono' }}>
+        <span style={{ color: 'var(--accent)' }}>+{pos} positive</span>
+        <span style={{ color: 'var(--text3)' }}>Sentiment</span>
+        <span style={{ color: 'var(--danger)' }}>{neg} negative</span>
+      </div>
+      <div style={{ height: 6, borderRadius: 3, overflow: 'hidden', display: 'flex', background: 'rgba(255,255,255,0.06)' }}>
+        <div style={{ width: `${posW}%`, background: 'var(--accent)', transition: 'width 0.6s ease' }} />
+        <div style={{ width: `${negW}%`, background: 'var(--danger)', marginLeft: 'auto', transition: 'width 0.6s ease' }} />
+      </div>
+    </div>
+  );
+}
+
+export default function UploadSection() {
+  const { state, dispatch, addNotification, navigate } = useApp();
+  const { settings } = state;
   const [isDragging, setIsDragging] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [previews, setPreviews] = useState<PreviewResult[]>([]);
+  const [results, setResults] = useState<UploadResult[]>([]);
+  const [selectedResult, setSelectedResult] = useState<UploadResult | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const processFile = useCallback(async (file: File) => {
-    if (file.size > state.settings.maxFileSize) return null;
-    if (file.size === 0) return null;
-    const content = await file.text();
-    return { file, analyzed: analyzeFile(content, file.name, file.size) };
-  }, [state.settings.maxFileSize]);
+  const processFile = useCallback((file: File): Promise<UploadResult> => {
+    return new Promise((resolve) => {
+      if (!file.name.endsWith('.txt') && !file.name.endsWith('.md') && !file.name.endsWith('.csv') && !file.name.endsWith('.log')) {
+        resolve({ file: null as any, status: 'error', error: `"${file.name}" — only .txt, .md, .csv, .log files allowed` });
+        return;
+      }
+      const maxBytes = settings.maxFileSizeMB * 1024 * 1024;
+      if (file.size > maxBytes) {
+        resolve({ file: null as any, status: 'error', error: `"${file.name}" exceeds ${settings.maxFileSizeMB}MB limit (${formatBytes(file.size)})` });
+        return;
+      }
+      if (file.size === 0) {
+        resolve({ file: null as any, status: 'error', error: `"${file.name}" is empty` });
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const content = (e.target?.result as string) || '';
+        const analysis = analyzeFile(content, settings.filterStopwords, settings.minWordLength);
+        const tags: string[] = [];
+        if (analysis.issues.some(i => i.severity === 'critical')) tags.push('critical');
+        if (analysis.sentiment.score >= 25) tags.push('positive');
+        if (analysis.sentiment.score <= -25) tags.push('negative');
+        if (analysis.readability.score >= 70) tags.push('easy-read');
+        if (analysis.wordCount > 5000) tags.push('large');
+        const fileData: FileData = { id: generateId(), name: file.name, size: file.size, content, uploadedAt: Date.now(), queryCount: 0, analysis, tags };
+        resolve({ file: fileData, status: 'success' });
+      };
+      reader.onerror = () => resolve({ file: null as any, status: 'error', error: `Failed to read "${file.name}"` });
+      reader.readAsText(file);
+    });
+  }, [settings]);
 
-  const handleFiles = useCallback(async (fileList: FileList | File[]) => {
-    const files = Array.from(fileList).filter(f => f.type === 'text/plain' || f.name.endsWith('.txt'));
-    if (!files.length) return;
-
+  const handleFiles = useCallback(async (files: FileList | File[]) => {
+    const fileArr = Array.from(files);
+    if (fileArr.length === 0) return;
     setIsProcessing(true);
-    const results: PreviewResult[] = [];
-    for (const f of files) {
-      const r = await processFile(f);
-      if (r) results.push(r);
+    dispatch({ type: 'SET_LOADING', isLoading: true, message: `Analyzing ${fileArr.length} file${fileArr.length > 1 ? 's' : ''}…` });
+    const newResults: UploadResult[] = [];
+    for (const file of fileArr) {
+      const result = await processFile(file);
+      if (result.status === 'success' && result.file) {
+        // Check duplicate
+        const exists = state.files.some(f => f.name === result.file.name && f.size === result.file.size);
+        if (exists) {
+          newResults.push({ file: result.file, status: 'error', error: `"${result.file.name}" already indexed` });
+        } else {
+          dispatch({ type: 'ADD_FILE', file: result.file });
+          newResults.push(result);
+        }
+      } else {
+        newResults.push(result);
+      }
     }
-    setPreviews(prev => [...prev, ...results]);
+    setResults(prev => [...newResults, ...prev]);
+    if (newResults.length > 0) setSelectedResult(newResults[0]);
+    const successCount = newResults.filter(r => r.status === 'success').length;
+    const errCount = newResults.filter(r => r.status === 'error').length;
+    if (successCount > 0) addNotification('success', 'Files Indexed', `${successCount} file${successCount > 1 ? 's' : ''} analyzed successfully.`);
+    if (errCount > 0) addNotification('warning', 'Upload Issues', `${errCount} file${errCount > 1 ? 's' : ''} could not be processed.`);
     setIsProcessing(false);
-  }, [processFile]);
+    dispatch({ type: 'SET_LOADING', isLoading: false });
+  }, [processFile, state.files, dispatch, addNotification]);
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
+  const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
     handleFiles(e.dataTransfer.files);
   }, [handleFiles]);
 
-  const confirmUpload = useCallback(async (preview: PreviewResult) => {
-    await addFile(preview.file);
-    setPreviews(prev => prev.filter(p => p.file !== preview.file));
-  }, [addFile]);
+  const onDragOver = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(true); };
+  const onDragLeave = () => setIsDragging(false);
 
-  const confirmAll = useCallback(async () => {
-    for (const p of previews) {
-      await addFile(p.file);
-    }
-    setPreviews([]);
-    navigateTo('files');
-  }, [previews, addFile, navigateTo]);
-
-  const formatSize = (bytes: number) => bytes < 1024 ? `${bytes}B` : `${(bytes/1024).toFixed(1)}KB`;
-
-  const getSentimentColor = (s: string) => s === 'positive' ? '#10b981' : s === 'negative' ? '#f43f5e' : '#94a3b8';
+  const sel = selectedResult?.file;
 
   return (
-    <div className="space-y-8">
-      {/* Header */}
-      <div>
-        <div className="section-subtitle mb-1">Index New Documents</div>
-        <h1 className="section-title">Upload Files</h1>
-        <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
-          Upload .txt files for instant deep analysis. Max {state.settings.maxFileSize / 1024 / 1024}MB per file.
-        </p>
+    <div>
+      <div className="section-header">
+        <div>
+          <div className="section-title"><span className="section-icon">↑</span> Upload & Analyze</div>
+          <div className="section-subtitle">Upload .txt, .md, .csv, .log files for instant deep analysis</div>
+        </div>
+        {results.filter(r => r.status === 'success').length > 0 && (
+          <button className="btn btn-secondary btn-sm" onClick={() => navigate('files')}>
+            <span>▦</span> View Files
+          </button>
+        )}
       </div>
 
-      {/* Drop zone */}
+      {/* Drop Zone */}
       <div
-        className={`drop-zone p-12 text-center transition-all cursor-pointer ${isDragging ? 'dragover' : ''}`}
-        onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
-        onDragLeave={() => setIsDragging(false)}
-        onDrop={handleDrop}
+        className={`drop-zone${isDragging ? ' drag-over' : ''}`}
+        onDrop={onDrop}
+        onDragOver={onDragOver}
+        onDragLeave={onDragLeave}
         onClick={() => fileInputRef.current?.click()}
+        style={{ marginBottom: 24 }}
       >
         <input
           ref={fileInputRef}
           type="file"
-          accept=".txt,text/plain"
           multiple
-          className="hidden"
+          accept=".txt,.md,.csv,.log"
+          style={{ display: 'none' }}
           onChange={e => e.target.files && handleFiles(e.target.files)}
         />
-
         {isProcessing ? (
-          <div className="flex flex-col items-center gap-4">
-            <div className="w-16 h-16 rounded-2xl flex items-center justify-center"
-              style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)' }}>
-              <Zap className="w-8 h-8 animate-pulse" style={{ color: '#f59e0b' }} />
-            </div>
-            <div>
-              <div className="font-bold text-lg mb-1" style={{ fontFamily: 'var(--font-display)', color: 'var(--text-primary)' }}>
-                Analyzing...
-              </div>
-              <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>Building index and extracting insights</div>
-            </div>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
+            <div className="spinner spinner-lg" />
+            <div style={{ color: 'var(--accent)', fontFamily: 'JetBrains Mono', fontSize: 14 }}>Processing files…</div>
           </div>
         ) : (
-          <div className="flex flex-col items-center gap-5">
-            <div className={`w-20 h-20 rounded-2xl flex items-center justify-center transition-all ${isDragging ? 'scale-110' : ''}`}
-              style={{ background: isDragging ? 'rgba(245,158,11,0.15)' : 'rgba(30,58,95,0.3)', border: `2px dashed ${isDragging ? '#f59e0b' : 'rgba(30,58,95,0.6)'}` }}>
-              <Upload className="w-10 h-10" style={{ color: isDragging ? '#f59e0b' : 'var(--text-muted)' }} />
+          <>
+            <div style={{ fontSize: 40, marginBottom: 16, opacity: 0.6, animation: 'float 3s ease-in-out infinite' }}>⬆</div>
+            <div style={{ fontFamily: 'Syne', fontWeight: 700, fontSize: 18, color: 'var(--text)', marginBottom: 8 }}>
+              {isDragging ? 'Drop files here' : 'Drag & Drop Files'}
             </div>
-            <div>
-              <div className="text-lg font-bold mb-1" style={{ fontFamily: 'var(--font-display)', color: isDragging ? '#f59e0b' : 'var(--text-primary)' }}>
-                {isDragging ? 'Drop to analyze' : 'Drop .txt files here'}
-              </div>
-              <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                or <span style={{ color: '#f59e0b', fontWeight: '600' }}>browse files</span>
-              </div>
-              <div className="mono text-xs mt-2" style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: '0.65rem' }}>
-                .txt only · max {state.settings.maxFileSize/1024/1024}MB · multiple files supported
-              </div>
+            <div style={{ fontSize: 13, color: 'var(--text2)', marginBottom: 16 }}>
+              or click to browse — .txt, .md, .csv, .log · max {settings.maxFileSizeMB}MB each · multiple files supported
             </div>
-          </div>
+            <button className="btn btn-primary" onClick={e => { e.stopPropagation(); fileInputRef.current?.click(); }}>
+              <span>↑</span> Browse Files
+            </button>
+          </>
         )}
       </div>
 
-      {/* Previews */}
-      {previews.length > 0 && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--text-primary)' }}>
-              Analysis Preview ({previews.length} file{previews.length !== 1 ? 's' : ''})
+      {/* Results */}
+      {results.length > 0 && (
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+            <h3 style={{ fontFamily: 'Syne', fontWeight: 700, fontSize: 16, color: 'var(--text)' }}>
+              Analysis Results
             </h3>
-            <div className="flex gap-2">
-              <button onClick={() => setPreviews([])} className="btn-ghost flex items-center gap-1.5">
-                <X className="w-3.5 h-3.5" /> Clear All
-              </button>
-              <button onClick={confirmAll} className="btn-primary flex items-center gap-1.5">
-                <Plus className="w-3.5 h-3.5" /> Index All Files
-              </button>
-            </div>
+            <span className="badge badge-info">{results.length} file{results.length !== 1 ? 's' : ''}</span>
+            <button className="btn btn-ghost btn-sm" style={{ marginLeft: 'auto' }} onClick={() => { setResults([]); setSelectedResult(null); }}>
+              Clear History
+            </button>
           </div>
 
-          {previews.map((p, i) => {
-            const a = p.analyzed;
-            return (
-              <div key={i} className="glass-card p-6">
-                {/* File header */}
-                <div className="flex items-start justify-between mb-6">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl flex items-center justify-center"
-                      style={{ background: 'rgba(6,182,212,0.1)', border: '1px solid rgba(6,182,212,0.3)' }}>
-                      <FileText className="w-5 h-5" style={{ color: '#06b6d4' }} />
-                    </div>
-                    <div>
-                      <div className="font-semibold" style={{ color: 'var(--text-primary)' }}>{a.name}</div>
-                      <div className="mono text-xs" style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: '0.65rem' }}>
-                        {formatSize(a.size)} · uploaded just now
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <button onClick={() => setPreviews(prev => prev.filter((_, j) => j !== i))} className="btn-ghost">
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                    <button onClick={() => confirmUpload(p)} className="btn-primary flex items-center gap-1.5">
-                      <Plus className="w-3.5 h-3.5" /> Index
-                    </button>
-                  </div>
-                </div>
-
-                {/* Stats grid */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-                  {[
-                    { label: 'Words', value: a.stats.wordCount.toLocaleString(), color: '#06b6d4' },
-                    { label: 'Lines', value: a.stats.lineCount.toLocaleString(), color: '#8b5cf6' },
-                    { label: 'Characters', value: a.stats.charCount.toLocaleString(), color: '#f59e0b' },
-                    { label: 'Sentences', value: a.stats.sentenceCount.toLocaleString(), color: '#10b981' },
-                    { label: 'Unique Words', value: a.stats.uniqueWordCount.toLocaleString(), color: '#f97316' },
-                    { label: 'Issues Found', value: a.stats.issues.length, color: a.stats.issues.length > 0 ? '#f43f5e' : '#10b981' },
-                    { label: 'Paragraphs', value: a.stats.paragraphCount, color: '#8b5cf6' },
-                    { label: 'Lexical Density', value: `${a.stats.lexicalDensity.toFixed(1)}%`, color: '#06b6d4' },
-                  ].map(s => (
-                    <div key={s.label} className="p-3 rounded-lg text-center"
-                      style={{ background: 'rgba(13,21,32,0.6)', border: '1px solid rgba(30,58,95,0.4)' }}>
-                      <div className="mono text-lg font-bold" style={{ color: s.color, fontFamily: 'var(--font-mono)' }}>{s.value}</div>
-                      <div className="text-xs mt-0.5" style={{ color: 'var(--text-muted)', fontSize: '0.65rem' }}>{s.label}</div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Two column: top words + analysis */}
-                <div className="grid md:grid-cols-2 gap-6">
-                  {/* Top words */}
-                  <div>
-                    <div className="text-xs font-semibold mb-3"
-                      style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
-                      Top 10 Words
-                    </div>
-                    <div className="space-y-2">
-                      {a.stats.topWords.slice(0, 10).map((w, wi) => {
-                        const max = a.stats.topWords[0]?.count || 1;
-                        return (
-                          <div key={w.word} className="flex items-center gap-2">
-                            <span className="mono text-xs w-4 text-right"
-                              style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: '0.6rem' }}>{wi+1}</span>
-                            <span className="mono text-xs w-24 truncate"
-                              style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', fontSize: '0.72rem' }}>{w.word}</span>
-                            <div className="flex-1 progress-bar">
-                              <div className="word-freq-bar" style={{ width: `${(w.count/max)*100}%` }} />
-                            </div>
-                            <span className="mono text-xs"
-                              style={{ color: '#f59e0b', fontFamily: 'var(--font-mono)', fontSize: '0.7rem', width: '28px', textAlign: 'right' }}>{w.count}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Analysis details */}
-                  <div className="space-y-4">
-                    {/* Readability */}
-                    <div className="p-3 rounded-lg" style={{ background: 'rgba(13,21,32,0.6)', border: '1px solid rgba(30,58,95,0.4)' }}>
-                      <div className="text-xs font-semibold mb-2" style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Readability</div>
-                      <div className="flex items-baseline gap-2 mb-1">
-                        <span className="mono text-2xl font-bold" style={{ color: '#f59e0b', fontFamily: 'var(--font-mono)' }}>{a.stats.readability.fleschKincaid.toFixed(0)}</span>
-                        <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>Flesch-Kincaid</span>
-                      </div>
-                      <div className="text-xs" style={{ color: '#06b6d4' }}>{a.stats.readability.grade}</div>
-                      <div className="mono text-xs mt-1" style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: '0.65rem' }}>
-                        ~{a.stats.readability.avgWordsPerSentence.toFixed(1)} words/sentence
-                      </div>
-                    </div>
-
-                    {/* Sentiment */}
-                    <div className="p-3 rounded-lg" style={{ background: 'rgba(13,21,32,0.6)', border: '1px solid rgba(30,58,95,0.4)' }}>
-                      <div className="text-xs font-semibold mb-2" style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Sentiment</div>
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="font-semibold text-sm" style={{ color: getSentimentColor(a.stats.sentiment.overall) }}>
-                          {a.stats.sentiment.overall.toUpperCase()}
-                        </span>
-                        <span className="mono text-xs" style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: '0.65rem' }}>
-                          score: {a.stats.sentiment.score.toFixed(2)}
-                        </span>
-                      </div>
-                      <div className="sentiment-track">
-                        <div className="h-full rounded-full transition-all"
-                          style={{
-                            width: `${Math.abs(a.stats.sentiment.score) * 100}%`,
-                            background: a.stats.sentiment.overall === 'positive' ? '#10b981' : a.stats.sentiment.overall === 'negative' ? '#f43f5e' : '#94a3b8',
-                            marginLeft: a.stats.sentiment.score < 0 ? 'auto' : '0',
-                          }} />
-                      </div>
-                      <div className="flex justify-between mono text-xs mt-1" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem' }}>
-                        <span style={{ color: '#10b981' }}>+{a.stats.sentiment.positive} pos</span>
-                        <span style={{ color: '#f43f5e' }}>-{a.stats.sentiment.negative} neg</span>
-                      </div>
-                    </div>
-
-                    {/* Special words */}
-                    <div className="p-3 rounded-lg" style={{ background: 'rgba(13,21,32,0.6)', border: '1px solid rgba(30,58,95,0.4)' }}>
-                      <div className="text-xs font-semibold mb-2" style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Word Insights</div>
-                      <div className="space-y-1.5">
-                        {[
-                          { label: 'Longest', val: a.stats.longestWord, color: '#8b5cf6' },
-                          { label: 'Unusual', val: a.stats.mostUnusualWord, color: '#f97316' },
-                          { label: 'Type-Token', val: `${(a.stats.typeTokenRatio*100).toFixed(1)}%`, color: '#06b6d4' },
-                        ].map(row => (
-                          <div key={row.label} className="flex justify-between">
-                            <span className="mono text-xs" style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: '0.65rem' }}>{row.label}</span>
-                            <span className="mono text-xs" style={{ color: row.color, fontFamily: 'var(--font-mono)', fontSize: '0.72rem' }}>{row.val}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Issues preview */}
-                {a.stats.issues.length > 0 && (
-                  <div className="mt-6 p-4 rounded-lg" style={{ background: 'rgba(244,63,94,0.05)', border: '1px solid rgba(244,63,94,0.2)' }}>
-                    <div className="flex items-center gap-2 mb-3">
-                      <AlertTriangle className="w-4 h-4" style={{ color: '#f43f5e' }} />
-                      <span className="text-sm font-semibold" style={{ color: '#f43f5e' }}>
-                        {a.stats.issues.length} High-Impact Issues Detected
-                      </span>
-                    </div>
-                    <div className="space-y-1 max-h-32 overflow-y-auto">
-                      {a.stats.issues.slice(0, 8).map((issue, ii) => (
-                        <div key={ii} className="mono text-xs flex items-center gap-2"
-                          style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem' }}>
-                          <span className="badge badge-rose" style={{ padding: '0.1rem 0.4rem', fontSize: '0.55rem' }}>{issue.keyword}</span>
-                          <span style={{ color: 'var(--text-muted)' }}>line {issue.line}:{issue.col}</span>
-                          <span className="truncate" style={{ color: 'var(--text-secondary)' }}>{issue.context}</span>
-                        </div>
-                      ))}
-                      {a.stats.issues.length > 8 && (
-                        <div className="mono text-xs" style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: '0.65rem' }}>
-                          + {a.stats.issues.length - 8} more issues...
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Content preview */}
-                <div className="mt-4">
-                  <div className="text-xs font-semibold mb-2"
-                    style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
-                    Content Preview (first 300 chars)
-                  </div>
-                  <div className="p-3 rounded-lg mono text-xs leading-relaxed"
-                    style={{ background: 'rgba(13,21,32,0.8)', border: '1px solid rgba(30,58,95,0.4)', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', fontSize: '0.72rem', whiteSpace: 'pre-wrap', maxHeight: '80px', overflow: 'hidden' }}>
-                    {a.content.slice(0, 300)}{a.content.length > 300 ? '...' : ''}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Already indexed files quick reference */}
-      {state.files.length > 0 && previews.length === 0 && (
-        <div className="glass-card p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--text-primary)' }}>
-              Currently Indexed ({state.files.length} file{state.files.length !== 1 ? 's' : ''})
-            </h3>
-            <button onClick={() => navigateTo('files')} className="btn-ghost text-xs">View All →</button>
-          </div>
-          <div className="space-y-2">
-            {state.files.map(f => (
-              <div key={f.id} className="flex items-center justify-between p-3 rounded-lg"
-                style={{ background: 'rgba(13,21,32,0.5)', border: '1px solid rgba(30,58,95,0.3)' }}>
-                <div className="flex items-center gap-2">
-                  <CheckCircle className="w-4 h-4" style={{ color: '#10b981' }} />
-                  <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{f.name}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="mono text-xs" style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: '0.65rem' }}>
-                    {f.stats.wordCount.toLocaleString()} words
-                  </span>
-                  {f.stats.issues.length > 0 && <span className="badge badge-rose">{f.stats.issues.length}</span>}
-                </div>
-              </div>
+          {/* File tabs */}
+          <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 8, marginBottom: 16 }}>
+            {results.map((r, i) => (
+              <button
+                key={i}
+                onClick={() => r.status === 'success' && setSelectedResult(r)}
+                className={`btn btn-sm ${selectedResult === r ? 'btn-primary' : r.status === 'error' ? 'btn-danger' : 'btn-ghost'}`}
+                style={{ flexShrink: 0, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+              >
+                {r.status === 'error' ? '✕ ' : '✓ '}
+                {r.status === 'success' ? r.file.name : (r.error?.split('"')[1] || 'Error')}
+              </button>
             ))}
           </div>
+
+          {/* Error messages */}
+          {results.filter(r => r.status === 'error').map((r, i) => (
+            <div key={i} style={{ background: 'rgba(255,68,85,0.08)', border: '1px solid rgba(255,68,85,0.2)', borderRadius: 'var(--r)', padding: '10px 14px', marginBottom: 8, fontSize: 12.5, color: 'var(--danger)', fontFamily: 'JetBrains Mono' }}>
+              ✕ {r.error}
+            </div>
+          ))}
+
+          {/* Detailed analysis for selected file */}
+          {sel && (
+            <div style={{ animation: 'fadeUp 0.3s ease' }}>
+              {/* Header */}
+              <div className="card" style={{ padding: '18px 22px', marginBottom: 16 }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+                  <div>
+                    <div style={{ fontFamily: 'Syne', fontWeight: 700, fontSize: 16, color: 'var(--text)', marginBottom: 4 }}>{sel.name}</div>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <span className="badge badge-neutral">{formatBytes(sel.size)}</span>
+                      <span className="badge badge-info">Uploaded {new Date(sel.uploadedAt).toLocaleTimeString()}</span>
+                      {sel.tags.map(t => <span key={t} className={`badge ${t === 'critical' ? 'badge-danger' : t === 'positive' ? 'badge-success' : t === 'negative' ? 'badge-danger' : 'badge-purple'}`}>{t}</span>)}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button className="btn btn-secondary btn-sm" onClick={() => navigate('search')}>
+                      <span>⌕</span> Search This File
+                    </button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => navigate('files')}>
+                      <span>▦</span> File Manager
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Core stats grid */}
+              <div className="grid-4" style={{ marginBottom: 16 }}>
+                {[
+                  { label: 'Words', value: sel.analysis.wordCount.toLocaleString() },
+                  { label: 'Unique Words', value: sel.analysis.uniqueWordCount.toLocaleString() },
+                  { label: 'Lines', value: sel.analysis.lineCount.toLocaleString() },
+                  { label: 'Characters', value: sel.analysis.charCount.toLocaleString() },
+                  { label: 'Sentences', value: sel.analysis.sentenceCount.toLocaleString() },
+                  { label: 'Paragraphs', value: sel.analysis.paragraphCount.toLocaleString() },
+                  { label: 'URLs Found', value: sel.analysis.urlCount },
+                  { label: 'Numbers Found', value: sel.analysis.numberCount },
+                ].map((s, i) => (
+                  <div key={i} className="card" style={{ padding: '12px 16px', textAlign: 'center' }}>
+                    <div style={{ fontSize: 22, fontFamily: 'Syne', fontWeight: 700, color: 'var(--accent)', marginBottom: 4 }}>{s.value}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text2)', fontFamily: 'JetBrains Mono', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{s.label}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Readability + Sentiment */}
+              <div className="grid-2" style={{ marginBottom: 16 }}>
+                <div className="card" style={{ padding: '16px 20px' }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text2)', fontFamily: 'JetBrains Mono', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 14 }}>READABILITY ANALYSIS</div>
+                  <ReadabilityGauge score={sel.analysis.readability.score} level={sel.analysis.readability.level} />
+                  <div style={{ marginTop: 14, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    {[
+                      { k: 'Avg Words/Sentence', v: sel.analysis.readability.avgWordsPerSentence },
+                      { k: 'Avg Chars/Word', v: sel.analysis.readability.avgCharsPerWord },
+                      { k: 'Lexical Density', v: sel.analysis.lexicalDensity + '%' },
+                      { k: 'Avg Words/Line', v: sel.analysis.avgWordsPerLine },
+                    ].map((s, i) => (
+                      <div key={i} style={{ background: 'rgba(0,0,0,0.2)', borderRadius: 6, padding: '8px 10px' }}>
+                        <div style={{ fontSize: 10, color: 'var(--text3)', fontFamily: 'JetBrains Mono', marginBottom: 3 }}>{s.k}</div>
+                        <div style={{ fontSize: 16, fontFamily: 'Syne', fontWeight: 700, color: 'var(--accent2)' }}>{s.v}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="card" style={{ padding: '16px 20px' }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text2)', fontFamily: 'JetBrains Mono', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 14 }}>SENTIMENT ANALYSIS</div>
+                  <SentimentBar pos={sel.analysis.sentiment.positiveCount} neg={sel.analysis.sentiment.negativeCount} total={sel.analysis.wordCount} />
+                  <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+                    <div style={{ flex: 1, background: 'rgba(0,255,157,0.06)', border: '1px solid rgba(0,255,157,0.15)', borderRadius: 8, padding: '10px 12px' }}>
+                      <div style={{ fontSize: 10, color: 'var(--text3)', fontFamily: 'JetBrains Mono', marginBottom: 4 }}>OVERALL</div>
+                      <div style={{ fontFamily: 'Syne', fontWeight: 700, fontSize: 14, color: sel.analysis.sentiment.score >= 0 ? 'var(--accent)' : 'var(--danger)' }}>
+                        {sel.analysis.sentiment.label}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2, fontFamily: 'JetBrains Mono' }}>score: {sel.analysis.sentiment.score > 0 ? '+' : ''}{sel.analysis.sentiment.score}</div>
+                    </div>
+                  </div>
+                  <div style={{ marginTop: 10 }}>
+                    {sel.analysis.sentiment.positiveWords.length > 0 && (
+                      <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4, fontFamily: 'JetBrains Mono' }}>
+                        <span style={{ color: 'var(--accent)' }}>+ </span>
+                        {sel.analysis.sentiment.positiveWords.join(', ')}
+                      </div>
+                    )}
+                    {sel.analysis.sentiment.negativeWords.length > 0 && (
+                      <div style={{ fontSize: 11, color: 'var(--text3)', fontFamily: 'JetBrains Mono' }}>
+                        <span style={{ color: 'var(--danger)' }}>− </span>
+                        {sel.analysis.sentiment.negativeWords.join(', ')}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Top words + Issues */}
+              <div className="grid-2" style={{ marginBottom: 16 }}>
+                {/* Top words */}
+                <div className="card" style={{ padding: '16px 20px' }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text2)', fontFamily: 'JetBrains Mono', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>TOP 10 WORDS</div>
+                  {sel.analysis.topWords.slice(0, 10).map((w, i) => (
+                    <div key={i} className="word-bar-wrap">
+                      <div className="word-bar-label">{w.word}</div>
+                      <div className="word-bar-track">
+                        <div className="word-bar-fill" style={{ width: `${w.count / sel.analysis.topWords[0].count * 100}%` }} />
+                      </div>
+                      <div className="word-bar-count">{w.count}</div>
+                    </div>
+                  ))}
+                  {sel.analysis.topBigrams.length > 0 && (
+                    <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
+                      <div style={{ fontSize: 11, color: 'var(--text3)', fontFamily: 'JetBrains Mono', marginBottom: 6 }}>TOP BIGRAMS</div>
+                      {sel.analysis.topBigrams.slice(0, 4).map((b, i) => (
+                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '3px 0', color: 'var(--text2)', fontFamily: 'JetBrains Mono' }}>
+                          <span>"{b.phrase}"</span><span style={{ color: 'var(--accent3)' }}>{b.count}×</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Issues */}
+                <div className="card" style={{ padding: '16px 20px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text2)', fontFamily: 'JetBrains Mono', textTransform: 'uppercase', letterSpacing: '0.08em' }}>DETECTED ISSUES</div>
+                    <span className={`badge ${sel.analysis.issues.length > 0 ? 'badge-danger' : 'badge-success'}`}>
+                      {sel.analysis.issues.length > 0 ? sel.analysis.issues.length + ' patterns' : 'Clean'}
+                    </span>
+                  </div>
+                  {sel.analysis.issues.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '20px', color: 'var(--text3)', fontSize: 12 }}>
+                      <div style={{ fontSize: 24, marginBottom: 8 }}>✓</div>
+                      No issues detected
+                    </div>
+                  ) : (
+                    <div style={{ maxHeight: 220, overflowY: 'auto' }}>
+                      {sel.analysis.issues.map((issue, i) => (
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                          <span className={`badge badge-${issue.severity === 'critical' ? 'danger' : issue.severity === 'high' ? 'danger' : issue.severity === 'medium' ? 'warning' : 'info'}`} style={{ fontSize: 9, minWidth: 52, justifyContent: 'center' }}>
+                            {issue.severity}
+                          </span>
+                          <span style={{ flex: 1, fontSize: 12, color: 'var(--text)', fontFamily: 'JetBrains Mono' }}>"{issue.keyword}"</span>
+                          <span style={{ fontSize: 11, color: 'var(--accent)', fontFamily: 'JetBrains Mono' }}>{issue.count}×</span>
+                          {issue.lineNumbers.length > 0 && (
+                            <span style={{ fontSize: 10, color: 'var(--text3)', fontFamily: 'JetBrains Mono' }}>L{issue.lineNumbers.slice(0, 3).join(',')}</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Unusual word */}
+                  {sel.analysis.mostUnusualWord && (
+                    <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--border)', display: 'flex', gap: 10 }}>
+                      {[
+                        { label: 'Most Unusual', val: sel.analysis.mostUnusualWord, color: 'var(--accent3)' },
+                        { label: 'Longest Word', val: sel.analysis.longestWord, color: 'var(--accent2)' },
+                      ].map((s, i) => (
+                        <div key={i} style={{ flex: 1, background: 'rgba(0,0,0,0.2)', borderRadius: 6, padding: '8px 10px' }}>
+                          <div style={{ fontSize: 10, color: 'var(--text3)', fontFamily: 'JetBrains Mono', marginBottom: 3 }}>{s.label}</div>
+                          <div style={{ fontSize: 13, fontFamily: 'JetBrains Mono', color: s.color, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.val}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Content Preview */}
+              <div className="card" style={{ padding: '16px 20px' }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text2)', fontFamily: 'JetBrains Mono', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
+                  CONTENT PREVIEW <span style={{ color: 'var(--text3)', fontWeight: 400 }}>— first 800 characters</span>
+                </div>
+                <div className="code" style={{ maxHeight: 140, overflowY: 'auto' }}>
+                  {sel.content.slice(0, 800)}{sel.content.length > 800 ? '…' : ''}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
   );
 }
-
-
