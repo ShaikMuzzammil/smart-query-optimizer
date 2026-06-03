@@ -1,19 +1,91 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { Resend } from 'resend'
+import { NextRequest, NextResponse } from 'next/server';
+import { getResendClient, buildContactEmailHtml, buildContactConfirmationHtml } from '@/lib/resend';
+import { connectDB }  from '@/lib/mongodb';
+import { ContactMessage } from '@/models/ContactMessage';
+import { rateLimit, CONTACT_RATE_LIMIT } from '@/lib/rateLimit';
+import { hashIP } from '@/lib/utils';
 
 export async function POST(req: NextRequest) {
+  // ── Rate limit ────────────────────────────────────────────
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+  const rl = rateLimit(ip, CONTACT_RATE_LIMIT);
+  if (!rl.success) {
+    return NextResponse.json(
+      { success: false, error: `Too many messages. Try again in ${Math.ceil(rl.retryAfterMs / 60000)} minutes.` },
+      { status: 429 }
+    );
+  }
+
+  // ── Parse body ────────────────────────────────────────────
+  let body: any;
+  try { body = await req.json(); }
+  catch { return NextResponse.json({ success: false, error: 'Invalid JSON.' }, { status: 400 }); }
+
+  const { name, email, subject, category, message } = body;
+
+  if (!name?.trim() || !email?.trim() || !subject?.trim() || !message?.trim()) {
+    return NextResponse.json({ success: false, error: 'All fields are required.' }, { status: 400 });
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return NextResponse.json({ success: false, error: 'Invalid email address.' }, { status: 400 });
+  }
+  if (message.length > 5000) {
+    return NextResponse.json({ success: false, error: 'Message exceeds 5,000 characters.' }, { status: 400 });
+  }
+
+  const safeData = {
+    name:     name.trim().slice(0, 100),
+    email:    email.trim().toLowerCase().slice(0, 200),
+    subject:  subject.trim().slice(0, 200),
+    category: ['general','bug','feature','billing','enterprise'].includes(category) ? category : 'general',
+    message:  message.trim().slice(0, 5000),
+  };
+
+  // ── Send emails (non-fatal) ───────────────────────────────
   try {
-    const { name, email, subject, message } = await req.json()
-    if (!name?.trim()||!email?.trim()||!message?.trim()) return NextResponse.json({error:'Name, email, and message required'},{status:400})
-    if (message.trim().length<10) return NextResponse.json({error:'Message too short'},{status:400})
-    const rk = process.env.RESEND_API_KEY
-    const admin = process.env.ADMIN_EMAIL
-    if (rk && admin) {
-      const resend = new Resend(rk)
-      const from = process.env.DEFAULT_FROM_EMAIL||'onboarding@resend.dev'
-      await resend.emails.send({from:`SmartQuery <${from}>`,to:admin,reply_to:email,subject:`[SmartQuery Contact] ${name}: ${subject||'Message'}`,html:`<div style="font-family:Arial;padding:20px"><h2>New Contact Message</h2><p><strong>From:</strong> ${name} (${email})</p><p><strong>Subject:</strong> ${subject||'N/A'}</p><p><strong>Message:</strong></p><p>${message.replace(/\n/g,'<br>')}</p></div>`})
-      await resend.emails.send({from:`SmartQuery <${from}>`,to:email,subject:'We received your message',html:`<div style="font-family:Arial;padding:20px"><h2>Thanks ${name}!</h2><p>We received your message and will reply shortly.</p><blockquote style="border-left:3px solid #00C6FF;padding-left:12px;color:#666">${message.substring(0,200)}</blockquote></div>`})
+    const resend    = getResendClient();
+    const adminEmail = process.env.ADMIN_EMAIL;
+    const fromEmail = `${process.env.FROM_NAME || 'Smart Query Optimizer'} <${process.env.FROM_EMAIL || 'onboarding@resend.dev'}>`;
+
+    const sends = [];
+
+    // Notify admin
+    if (adminEmail) {
+      sends.push(resend.emails.send({
+        from:    fromEmail,
+        to:      adminEmail,
+        subject: `[SmartQuery Contact] ${safeData.subject}`,
+        html:    buildContactEmailHtml(safeData),
+      }));
     }
-    return NextResponse.json({ok:true})
-  } catch { return NextResponse.json({ok:true}) }
+
+    // Confirm to user
+    sends.push(resend.emails.send({
+      from:    fromEmail,
+      to:      safeData.email,
+      subject: '✅ We received your message — Smart Query Optimizer',
+      html:    buildContactConfirmationHtml(safeData.name),
+    }));
+
+    await Promise.allSettled(sends);
+  } catch (emailErr: any) {
+    console.warn('[/api/contact] Email send failed:', emailErr.message);
+    // Continue — email is best-effort
+  }
+
+  // ── Persist to MongoDB ────────────────────────────────────
+  try {
+    const db = await connectDB();
+    if (db) {
+      const ipHash = await hashIP(ip);
+      await ContactMessage.create({ ...safeData, ipHash });
+    }
+  } catch (dbErr: any) {
+    console.warn('[/api/contact] DB save failed:', dbErr.message);
+  }
+
+  return NextResponse.json({
+    success: true,
+    message: "Message received! We'll get back to you within 24–48 hours.",
+  });
 }
