@@ -1,31 +1,14 @@
-import Link from 'next/link';
-import Navbar from '@/components/layout/Navbar';
-import Footer from '@/components/layout/Footer';
-
+import Link from 'next/link'
 export default function NotFound() {
   return (
-    <main>
-      <Navbar />
-      <section className="min-h-screen pt-28 pb-20 flex items-center justify-center">
-        <div className="container-max max-w-lg text-center">
-          <div
-            className="text-8xl font-display font-black mb-4 text-gradient-cyber"
-            style={{ lineHeight: 1 }}
-          >
-            404
-          </div>
-          <div className="text-4xl mb-6">🌌</div>
-          <h1 className="text-2xl font-bold text-white mb-4">Page Not Found</h1>
-          <p className="text-[#8899bb] mb-8">
-            The page you're looking for doesn't exist — or it got optimized out of existence.
-          </p>
-          <div className="flex gap-3 justify-center">
-            <Link href="/" className="btn-secondary px-6 py-3 text-sm">← Home</Link>
-            <Link href="/optimizer" className="btn-primary px-6 py-3 text-sm">Launch Optimizer</Link>
-          </div>
-        </div>
-      </section>
-      <Footer />
-    </main>
-  );
+    <div style={{minHeight:'100vh',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',textAlign:'center',padding:24}}>
+      <div style={{fontFamily:'Syne',fontWeight:800,fontSize:120,lineHeight:1,background:'linear-gradient(135deg,#00C6FF,#7B2FBE)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',opacity:0.3,marginBottom:16}}>404</div>
+      <h1 style={{fontFamily:'Syne',fontWeight:700,fontSize:32,color:'white',marginBottom:12}}>Page Not Found</h1>
+      <p style={{color:'#7A9CC0',marginBottom:32,maxWidth:400}}>The page you&apos;re looking for doesn&apos;t exist or has been moved.</p>
+      <div style={{display:'flex',gap:14}}>
+        <Link href="/" className="btn-p" style={{padding:'12px 28px',borderRadius:10,textDecoration:'none',fontSize:14}}><span>← Home</span></Link>
+        <Link href="/dashboard" className="btn-o" style={{padding:'12px 28px',borderRadius:10,textDecoration:'none',fontSize:14}}>Dashboard</Link>
+      </div>
+    </div>
+  )
 }

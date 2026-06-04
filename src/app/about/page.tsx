@@ -1,115 +1,87 @@
-import type { Metadata } from 'next';
-import Navbar from '@/components/layout/Navbar';
-import Footer from '@/components/layout/Footer';
-import { Zap, Shield, Globe, Code2, Brain, TrendingUp } from 'lucide-react';
+import Link from 'next/link'
+import Navbar from '@/components/Navbar'
+import Footer from '@/components/Footer'
 
-export const metadata: Metadata = {
-  title: 'About',
-  description: 'Learn about Smart Query Optimizer — built to help developers write faster, better SQL.',
-};
-
-const TECH_STACK = [
-  { name: 'Next.js 14', icon: '▲', desc: 'App Router + Server Actions' },
-  { name: 'TypeScript',  icon: '🔷', desc: 'End-to-end type safety' },
-  { name: 'GPT-4o',      icon: '🧠', desc: 'AI optimization engine' },
-  { name: 'MongoDB',     icon: '🍃', desc: 'History persistence' },
-  { name: 'Resend',      icon: '📧', desc: 'Transactional email' },
-  { name: 'Framer Motion', icon: '✨', desc: 'Animations' },
-  { name: 'Tailwind CSS', icon: '🎨', desc: 'Utility-first styling' },
-  { name: 'Vercel',       icon: '🚀', desc: 'Edge deployment' },
-];
-
+const TECH = [
+  { name: 'Next.js 14', icon: '▲', desc: 'App Router + API Routes' },
+  { name: 'GPT-4o',     icon: '🧠', desc: 'AI optimization engine' },
+  { name: 'MongoDB',    icon: '🍃', desc: 'History persistence' },
+  { name: 'Resend',     icon: '📧', desc: 'Email notifications' },
+  { name: 'TypeScript', icon: '🔷', desc: 'End-to-end type safety' },
+  { name: 'Tailwind',   icon: '🎨', desc: 'Utility-first styling' },
+]
 const VALUES = [
-  { icon: Brain,     title: 'AI-First',     desc: 'We believe the best developer tools are amplified by AI, not replaced by it.',       color: '#00d4ff' },
-  { icon: Shield,    title: 'Privacy',       desc: 'Your query data is never stored on AI servers beyond the request window.',           color: '#8b5cf6' },
-  { icon: TrendingUp,title: 'Performance',  desc: 'Every optimization is data-driven. We back suggestions with cost estimates.',        color: '#00ff88' },
-  { icon: Globe,     title: 'Accessibility', desc: 'Free tier with no signup required. Great tooling should be accessible to everyone.', color: '#ff6600' },
-  { icon: Code2,     title: 'Openness',      desc: 'Built with open-source technologies. We share knowledge freely.',                    color: '#0080ff' },
-];
+  { icon: '🧠', t: 'AI-First',    d: 'GPT-4o analyzes query semantics, not just pattern matching.' },
+  { icon: '🔒', t: 'Privacy',     d: 'Queries are never stored on AI servers beyond the request.' },
+  { icon: '⚡', t: 'Performance', d: 'Every suggestion is backed by cost estimates and benchmarks.' },
+  { icon: '🌐', t: 'Open Access', d: 'Free tier, no signup required. Great tooling for everyone.' },
+]
 
-export default function AboutPage() {
+export default function About() {
   return (
-    <main>
+    <>
       <Navbar />
-      <section className="min-h-screen pt-28 pb-20">
-        <div className="container-max max-w-4xl">
+      <main style={{ minHeight: '100vh', paddingTop: 90, paddingBottom: 80 }}>
+        <div style={{ maxWidth: 900, margin: '0 auto', padding: '0 24px' }}>
 
           {/* Hero */}
-          <div className="text-center mb-20">
-            <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-[#00d4ff] to-[#0080ff] flex items-center justify-center mx-auto mb-6 shadow-neon-cyan">
-              <Zap size={36} className="text-black" fill="black" />
+          <div style={{ textAlign: 'center', marginBottom: 72 }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'rgba(0,198,255,0.08)', border: '1px solid rgba(0,198,255,0.2)', borderRadius: 100, padding: '5px 16px', fontSize: 12, color: '#00C6FF', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 24 }}>
+              About Us
             </div>
-            <h1 className="text-5xl font-display font-black text-white mb-6">
-              About <span className="text-gradient-cyber">Smart Query Optimizer</span>
+            <h1 style={{ fontSize: 'clamp(2.2rem,5vw,3.5rem)', fontFamily: 'Syne,sans-serif', fontWeight: 800, lineHeight: 1.1, marginBottom: 20 }}>
+              About <span className="gtext">Smart Query Optimizer</span>
             </h1>
-            <p className="text-[#8899bb] text-xl leading-relaxed max-w-2xl mx-auto">
-              Smart Query Optimizer was built out of frustration — watching developers spend hours hunting down
-              slow queries that a few well-placed indexes could have fixed in seconds. We built the tool
-              we wished existed.
+            <p style={{ color: '#7A9CC0', fontSize: 18, lineHeight: 1.7, maxWidth: 620, margin: '0 auto' }}>
+              Built out of frustration — watching developers spend hours hunting slow queries that a few well-placed indexes could have fixed in seconds. We built the tool we wished existed.
             </p>
           </div>
 
           {/* Mission */}
-          <div className="glass-card p-10 mb-14 text-center">
-            <div className="text-3xl mb-4">🎯</div>
-            <h2 className="text-2xl font-display font-bold text-white mb-4">Our Mission</h2>
-            <p className="text-[#8899bb] text-lg leading-relaxed max-w-2xl mx-auto">
-              To make SQL optimization accessible to every developer — from the junior engineer writing
-              their first JOIN to the senior DBA tuning a multi-terabyte warehouse. GPT-4o as a pair
-              programmer for your database layer.
+          <div className="card" style={{ padding: '40px', marginBottom: 48, textAlign: 'center' }}>
+            <div style={{ fontSize: 40, marginBottom: 16 }}>🎯</div>
+            <h2 style={{ fontSize: '1.6rem', fontFamily: 'Syne,sans-serif', fontWeight: 700, marginBottom: 12 }}>Our Mission</h2>
+            <p style={{ color: '#7A9CC0', fontSize: 16, lineHeight: 1.8, maxWidth: 600, margin: '0 auto' }}>
+              Make SQL optimization accessible to every developer — from the junior engineer writing their first JOIN to the senior DBA tuning a multi-terabyte warehouse. GPT-4o as your pair programmer for the database layer.
             </p>
           </div>
 
           {/* Values */}
-          <div className="mb-16">
-            <h2 className="text-3xl font-display font-bold text-white text-center mb-10">
-              What We <span className="text-gradient-cyber">Stand For</span>
-            </h2>
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-              {VALUES.map(({ icon: Icon, title, desc, color }) => (
-                <div key={title} className="cyber-card p-5 hover:border-[rgba(0,212,255,0.2)] transition-all">
-                  <div
-                    className="w-10 h-10 rounded-xl flex items-center justify-center mb-3"
-                    style={{ background: `${color}18`, border: `1px solid ${color}25` }}
-                  >
-                    <Icon size={18} style={{ color }} />
-                  </div>
-                  <h3 className="text-white font-bold mb-1.5">{title}</h3>
-                  <p className="text-[#8899bb] text-sm leading-relaxed">{desc}</p>
+          <div style={{ marginBottom: 56 }}>
+            <h2 style={{ fontSize: '1.6rem', fontFamily: 'Syne,sans-serif', fontWeight: 700, textAlign: 'center', marginBottom: 32 }}>What We <span className="gtext">Stand For</span></h2>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: 20 }}>
+              {VALUES.map(v => (
+                <div key={v.t} className="card" style={{ padding: 24 }}>
+                  <div style={{ fontSize: 28, marginBottom: 12 }}>{v.icon}</div>
+                  <h3 style={{ fontFamily: 'Syne,sans-serif', fontWeight: 700, marginBottom: 8 }}>{v.t}</h3>
+                  <p style={{ color: '#7A9CC0', fontSize: 13, lineHeight: 1.6 }}>{v.d}</p>
                 </div>
               ))}
             </div>
           </div>
 
           {/* Tech stack */}
-          <div className="mb-16">
-            <h2 className="text-3xl font-display font-bold text-white text-center mb-10">
-              Built With <span className="text-gradient-accent">Modern Tech</span>
-            </h2>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {TECH_STACK.map(t => (
-                <div
-                  key={t.name}
-                  className="glass-card p-4 text-center hover:border-[rgba(0,212,255,0.2)] transition-all"
-                >
-                  <div className="text-2xl mb-2">{t.icon}</div>
-                  <div className="text-white font-semibold text-sm">{t.name}</div>
-                  <div className="text-[#445566] text-xs mt-0.5">{t.desc}</div>
+          <div style={{ marginBottom: 56 }}>
+            <h2 style={{ fontSize: '1.6rem', fontFamily: 'Syne,sans-serif', fontWeight: 700, textAlign: 'center', marginBottom: 32 }}>Built With <span className="gtext">Modern Tech</span></h2>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 16 }}>
+              {TECH.map(t => (
+                <div key={t.name} className="card" style={{ padding: 20, textAlign: 'center' }}>
+                  <div style={{ fontSize: 24, marginBottom: 8 }}>{t.icon}</div>
+                  <div style={{ fontFamily: 'Syne,sans-serif', fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{t.name}</div>
+                  <div style={{ color: '#7A9CC0', fontSize: 12 }}>{t.desc}</div>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* CTA */}
-          <div className="text-center">
-            <a href="/optimizer" className="btn-primary px-10 py-4 text-sm inline-flex gap-2">
-              <Zap size={16} />
-              Try Smart Query Optimizer — Free
-            </a>
+          <div style={{ textAlign: 'center' }}>
+            <Link href="/optimizer" className="btn-p" style={{ padding: '14px 40px', borderRadius: 10, fontSize: 15, textDecoration: 'none', gap: 10 }}>
+              <span>⚡ Try the Optimizer — Free</span>
+            </Link>
           </div>
         </div>
-      </section>
+      </main>
       <Footer />
-    </main>
-  );
+    </>
+  )
 }
