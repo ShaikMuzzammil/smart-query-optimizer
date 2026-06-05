@@ -1,6 +1,6 @@
 import Link from 'next/link'
-import Navbar from '@/components/Navbar'
-import Footer from '@/components/Footer'
+import Navbar from '../../components/Navbar'
+import Footer from '../../components/Footer'
 
 const TECH = [
   { name: 'Next.js 14', icon: '▲', desc: 'App Router + API Routes' },

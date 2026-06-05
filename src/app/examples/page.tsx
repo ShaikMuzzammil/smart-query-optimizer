@@ -2,8 +2,8 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import Navbar from '@/components/Navbar'
-import Footer from '@/components/Footer'
+import Navbar from '../../components/Navbar'
+import Footer from '../../components/Footer'
 
 const EXAMPLES = [
   { id:'e1', title:'N+1 Join Nightmare', badge:'🔥 Most Common', category:'joins', difficulty:'intermediate', dbType:'postgresql', goal:'speed', expectedImprovement:87,

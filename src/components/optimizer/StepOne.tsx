@@ -2,8 +2,8 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronRight, Sparkles, Database, Target, FileCode, Lightbulb, BookOpen } from 'lucide-react';
-import type { OptimizeRequest, DbType, OptimizationGoal } from '@/types';
-import { QUERY_EXAMPLES } from '@/data/examples';
+import type { OptimizeRequest, DbType, OptimizationGoal } from '../../types';
+import { QUERY_EXAMPLES } from '../../data/examples';
 
 const DB_OPTIONS: { id: DbType; label: string; icon: string; color: string }[] = [
   { id: 'postgresql',   label: 'PostgreSQL',   icon: '🐘', color: '#336791' },

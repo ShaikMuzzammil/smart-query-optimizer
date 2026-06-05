@@ -2,8 +2,8 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { ChevronLeft, Rocket, Settings2, Eye, EyeOff, Gauge } from 'lucide-react';
-import type { OptimizeRequest, DbType, OptimizationGoal } from '@/types';
-import { truncateSQL } from '@/lib/utils';
+import type { OptimizeRequest, DbType, OptimizationGoal } from '../../types';
+import { truncateSQL } from '../../lib/utils';
 
 const DB_ICONS: Record<DbType, string> = {
   postgresql: '🐘', mysql: '🐬', sqlserver: '🖥️', sqlite: '💎',

@@ -3,7 +3,7 @@ import { motion, useMotionValue, useSpring, useTransform } from 'framer-motion';
 import Link from 'next/link';
 import { useCallback } from 'react';
 import { Zap, ChevronRight, ArrowDown, Terminal, Star } from 'lucide-react';
-import { useTypewriter, useScrollAnimation } from '@/hooks';
+import { useTypewriter, useScrollAnimation } from '../../hooks';
 
 const TYPEWRITER_STRINGS = [
   'PostgreSQL Queries',

@@ -3,10 +3,10 @@ import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Trash2, ChevronLeft, ChevronRight, Database, RefreshCw, TrendingUp, Clock, RotateCcw } from 'lucide-react';
 import Link from 'next/link';
-import Navbar from '@/components/layout/Navbar';
-import Footer from '@/components/layout/Footer';
-import type { HistoryItem } from '@/types';
-import { timeAgo, truncateSQL, getImprovementColor, formatMs } from '@/lib/utils';
+import Navbar from './layout/Navbar';
+import Footer from './layout/Footer';
+import type { HistoryItem } from '../types';
+import { timeAgo, truncateSQL, getImprovementColor, formatMs } from '../lib/utils';
 import toast from 'react-hot-toast';
 
 const DB_OPTIONS = ['', 'postgresql', 'mysql', 'sqlserver', 'sqlite', 'oracle', 'mongodb', 'cockroachdb', 'supabase'];

@@ -1,4 +1,4 @@
-import type { OptimizeRequest } from '@/types';
+import type { OptimizeRequest } from '../types';
 
 export function buildOptimizerPrompt(req: OptimizeRequest): {
   system: string;

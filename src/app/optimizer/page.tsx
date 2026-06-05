@@ -1,8 +1,8 @@
 'use client'
 import { useState, useCallback } from 'react'
 import Link from 'next/link'
-import Navbar from '@/components/Navbar'
-import Footer from '@/components/Footer'
+import Navbar from '../../components/Navbar'
+import Footer from '../../components/Footer'
 
 type DbType = 'postgresql'|'mysql'|'sqlserver'|'sqlite'|'oracle'|'mongodb'|'cockroachdb'|'supabase'
 type Goal   = 'speed'|'cost'|'readability'|'balanced'

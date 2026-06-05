@@ -2,9 +2,9 @@
 import { useEffect, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Copy, Check, Download, RefreshCw, Share2, BookOpen, BarChart3, Lightbulb, FileText } from 'lucide-react';
-import type { OptimizeResult } from '@/types';
-import { useClipboard } from '@/hooks';
-import { getImprovementColor } from '@/lib/utils';
+import type { OptimizeResult } from '../../types';
+import { useClipboard } from '../../hooks';
+import { getImprovementColor } from '../../lib/utils';
 import DiffViewer from './DiffViewer';
 import { MetricsPanel, IndexSuggestions } from './MetricsPanel';
 import ReactMarkdown from 'react-markdown';

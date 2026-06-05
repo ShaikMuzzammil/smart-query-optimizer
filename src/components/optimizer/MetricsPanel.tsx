@@ -2,9 +2,9 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Copy, Check, TrendingUp, Clock, Cpu, AlertTriangle, Zap } from 'lucide-react';
-import type { OptimizationMetrics, IndexSuggestion } from '@/types';
-import { useClipboard } from '@/hooks';
-import { formatCost, formatMs, formatPercent, getImprovementColor, getImpactColor } from '@/lib/utils';
+import type { OptimizationMetrics, IndexSuggestion } from '../../types';
+import { useClipboard } from '../../hooks';
+import { formatCost, formatMs, formatPercent, getImprovementColor, getImpactColor } from '../../lib/utils';
 
 // ══════════════════════════════════════════════════════════
 // METRICS PANEL

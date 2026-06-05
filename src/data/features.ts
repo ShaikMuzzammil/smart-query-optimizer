@@ -1,4 +1,4 @@
-import type { Feature, Testimonial, PricingPlan, FaqItem } from '@/types';
+import type { Feature, Testimonial, PricingPlan, FaqItem } from '../types';
 
 // ─── Features ──────────────────────────────────────────────
 export const FEATURES: Feature[] = [

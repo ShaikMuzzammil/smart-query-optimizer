@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { connectDB } from '@/lib/mongodb'
-import { QueryLog } from '@/models/QueryLog'
+import { connectDB } from '../../../lib/mongodb'
+import { QueryLog } from '../../../models/QueryLog'
 
 export async function GET(req: NextRequest) {
   const sp = new URL(req.url).searchParams

@@ -2,8 +2,8 @@
 import { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Zap } from 'lucide-react';
-import type { OptimizeRequest, WizardStep } from '@/types';
-import { useOptimizer } from '@/hooks';
+import type { OptimizeRequest, WizardStep } from '../../types';
+import { useOptimizer } from '../../hooks';
 import StepOne           from './StepOne';
 import StepTwo           from './StepTwo';
 import StepThree         from './StepThree';

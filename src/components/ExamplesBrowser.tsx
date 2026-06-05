@@ -4,8 +4,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowRight, Search, Filter } from 'lucide-react';
-import { QUERY_EXAMPLES, EXAMPLE_CATEGORIES } from '@/data/examples';
-import { useScrollAnimation } from '@/hooks';
+import { QUERY_EXAMPLES, EXAMPLE_CATEGORIES } from '../data/examples';
+import { useScrollAnimation } from '../hooks';
 
 const DIFFICULTY_COLORS: Record<string, string> = {
   beginner:     '#00ff88',

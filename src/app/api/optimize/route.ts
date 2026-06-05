@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getAI, MODEL } from '@/lib/openai'
-import { connectDB } from '@/lib/mongodb'
-import { QueryLog } from '@/models/QueryLog'
-import { rateLimit } from '@/lib/rateLimit'
+import { getAI, MODEL } from '../../../lib/openai'
+import { connectDB } from '../../../lib/mongodb'
+import { QueryLog } from '../../../models/QueryLog'
+import { rateLimit } from '../../../lib/rateLimit'
 export const maxDuration = 60
 const TIPS: Record<string,string> = {
   speed:'minimize execution time; push predicates early; replace correlated subqueries with JOINs; add covering indexes',

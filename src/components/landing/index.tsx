@@ -3,8 +3,8 @@ import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence, useInView } from 'framer-motion';
 import Link from 'next/link';
 import { ChevronDown, Check, Quote, Terminal, ArrowRight, Zap } from 'lucide-react';
-import { STATS, FEATURES, TESTIMONIALS, PRICING_PLANS, FAQ_ITEMS } from '@/data/features';
-import { useScrollAnimation, useAnimatedCounter } from '@/hooks';
+import { STATS, FEATURES, TESTIMONIALS, PRICING_PLANS, FAQ_ITEMS } from '../../data/features';
+import { useScrollAnimation, useAnimatedCounter } from '../../hooks';
 
 // ══════════════════════════════════════════════════════════
 // STATS SECTION

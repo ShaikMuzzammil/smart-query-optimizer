@@ -1,8 +1,8 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useMotionValue, useSpring, useTransform } from 'framer-motion';
-import type { OptimizeRequest, OptimizeResult } from '@/types';
-import { generateId } from '@/lib/utils';
+import type { OptimizeRequest, OptimizeResult } from '../types';
+import { generateId } from '../lib/utils';
 
 // ══════════════════════════════════════════════════════════
 // useTypewriter — cycles through strings with type/erase

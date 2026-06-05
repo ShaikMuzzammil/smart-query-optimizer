@@ -1,4 +1,4 @@
-import type { QueryExample } from '@/types';
+import type { QueryExample } from '../types';
 
 export const QUERY_EXAMPLES: QueryExample[] = [
   {
