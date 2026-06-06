@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { isDBConnected } from '../../../../lib/mongodb';
+import { isDBConnected } from '../../../lib/mongodb';
 
 const START_TIME = Date.now();
 
