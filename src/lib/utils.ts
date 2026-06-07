@@ -4,16 +4,13 @@ export const formatPct = (n: number) => `${Math.round(n)}%`
 export const formatPercent = formatPct
 export const formatCost = (n: number) => n.toLocaleString()
 export function truncateSQL(sql: string, max = 100) {
-  const s = sql.replace(/\s+/g,' ').trim()
-  return s.length <= max ? s : s.slice(0,max) + '…'
+  const s = sql.replace(/\s+/g,' ').trim(); return s.length <= max ? s : s.slice(0,max) + '…'
 }
 export function timeAgo(date: string|Date) {
   const d = typeof date==='string' ? new Date(date) : date
   const diff = Math.floor((Date.now()-d.getTime())/1000)
-  if (diff<60) return `${diff}s ago`
-  if (diff<3600) return `${Math.floor(diff/60)}m ago`
-  if (diff<86400) return `${Math.floor(diff/3600)}h ago`
-  return `${Math.floor(diff/86400)}d ago`
+  if (diff<60) return `${diff}s ago`; if (diff<3600) return `${Math.floor(diff/60)}m ago`
+  if (diff<86400) return `${Math.floor(diff/3600)}h ago`; return `${Math.floor(diff/86400)}d ago`
 }
 export const getImprovColor = (p: number) => p>=70?'#00E676':p>=40?'#00C6FF':'#7B2FBE'
 export const getImprovementColor = getImprovColor
