@@ -42,7 +42,7 @@ Goal: ${optimizationGoal} — ${TIPS[optimizationGoal]||TIPS.balanced}`
       sessionId: Math.random().toString(36).slice(2),
       createdAt: new Date().toISOString(),
     }
-    ;(async()=>{ try { const db=await connectDB(); if(db) await QueryLog.create({...result,dbType,optimizationGoal,schema}) } catch {} })()
+    ;(async()=>{ try { const db=await connectDB(); if(db) await (QueryLog as any).create({...result,dbType,optimizationGoal,schema}) } catch {} })()
     return NextResponse.json({ success: true, data: result })
   } catch(e:any) {
     const msg = e?.message||'AI error'
