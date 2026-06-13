@@ -1,6 +1,16 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: true,
-  webpack: (config) => { config.resolve.fallback = { fs: false, net: false, tls: false }; return config },
-}
-module.exports = nextConfig
+  experimental: {
+    serverComponentsExternalPackages: ['mongoose', 'natural'],
+  },
+  images: {
+    remotePatterns: [
+      { protocol: 'https', hostname: '**' },
+    ],
+  },
+  env: {
+    NEXTAUTH_SECRET: process.env.NEXTAUTH_SECRET,
+  },
+};
+
+module.exports = nextConfig;
