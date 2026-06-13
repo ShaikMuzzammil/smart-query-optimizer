@@ -41,9 +41,7 @@
     "compromise": "14.14.0",
     "sentiment": "5.0.2",
     "pdf-parse": "1.1.1",
-    "mammoth": "1.7.2"
-  },
-  "devDependencies": {
+    "mammoth": "1.7.2",
     "eslint": "8.57.0",
     "eslint-config-next": "14.2.35"
   }

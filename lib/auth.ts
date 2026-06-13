@@ -7,6 +7,22 @@ import { DEMO_USER_ID, DEMO_EMAIL, DEMO_PASSWORD } from './constants';
 
 export { DEMO_USER_ID, DEMO_EMAIL, DEMO_PASSWORD };
 
+// NextAuth THROWS in production if no secret is configured, which crashes
+// every page (since getCurrentUser() runs in the root layout chain). Fall
+// back to a generated default with a loud warning instead of a hard crash -
+// you should still set a real NEXTAUTH_SECRET in your environment.
+const resolvedSecret =
+  process.env.NEXTAUTH_SECRET ||
+  (() => {
+    console.warn(
+      '\n[smartquery-pro] WARNING: NEXTAUTH_SECRET is not set. Using an insecure ' +
+        'fallback so the app does not crash, but sessions are NOT secure and will ' +
+        'be invalidated on every redeploy. Set NEXTAUTH_SECRET in your environment ' +
+        '(generate one with: openssl rand -base64 32).\n'
+    );
+    return 'smartquery-pro-insecure-fallback-secret-please-set-NEXTAUTH_SECRET';
+  })();
+
 export const authOptions: NextAuthOptions = {
   session: { strategy: 'jwt' },
   pages: {
@@ -71,5 +87,5 @@ export const authOptions: NextAuthOptions = {
       return session;
     },
   },
-  secret: process.env.NEXTAUTH_SECRET,
+  secret: resolvedSecret,
 };
