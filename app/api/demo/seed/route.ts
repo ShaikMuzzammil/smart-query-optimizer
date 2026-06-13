@@ -15,45 +15,53 @@ export async function POST() {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!isDbConfigured()) return NextResponse.json({ error: 'MONGODB_URI is not configured.' }, { status: 503 });
 
-  await dbConnect();
+  try {
+    await dbConnect();
 
-  const existingNames = new Set(
-    (await FileDoc.find({ userId: user.id }).select('fileName').lean()).map((d: any) => d.fileName)
-  );
+    const existingNames = new Set(
+      (await FileDoc.find({ userId: user.id }).select('fileName').lean()).map((d: any) => d.fileName)
+    );
 
-  const toSeed = DEMO_DOCUMENTS.filter((d) => !existingNames.has(d.fileName));
-  if (toSeed.length === 0) {
-    return NextResponse.json({ seeded: 0, message: 'Demo documents are already loaded.' });
-  }
+    const toSeed = DEMO_DOCUMENTS.filter((d) => !existingNames.has(d.fileName));
+    if (toSeed.length === 0) {
+      return NextResponse.json({ seeded: 0, message: 'Demo documents are already loaded.' });
+    }
 
-  const corpusTokenSets = toSeed.map((d) => tokenizeMeaningful(d.content, true));
+    const corpusTokenSets = toSeed.map((d) => tokenizeMeaningful(d.content, true));
 
-  let seeded = 0;
-  for (const doc of toSeed) {
-    const wordCount = tokenize(doc.content).length;
-    const analysis = analyzeDocument(doc.content, corpusTokenSets);
+    let seeded = 0;
+    for (const doc of toSeed) {
+      const wordCount = tokenize(doc.content).length;
+      const analysis = analyzeDocument(doc.content, corpusTokenSets);
 
-    await FileDoc.create({
+      await FileDoc.create({
+        userId: user.id,
+        fileName: doc.fileName,
+        fileType: doc.fileType,
+        content: doc.content,
+        wordCount,
+        charCount: doc.content.length,
+        status: 'indexed',
+        analysis,
+        version: 1,
+        previousVersions: [],
+      });
+      seeded++;
+    }
+
+    await Notification.create({
       userId: user.id,
-      fileName: doc.fileName,
-      fileType: doc.fileType,
-      content: doc.content,
-      wordCount,
-      charCount: doc.content.length,
-      status: 'indexed',
-      analysis,
-      version: 1,
-      previousVersions: [],
+      type: 'system',
+      title: 'Demo data loaded',
+      message: `${seeded} example document${seeded > 1 ? 's' : ''} added to your index. Try searching for "error handling" or "refund policy".`,
     });
-    seeded++;
+
+    return NextResponse.json({ seeded });
+  } catch (err: any) {
+    console.error('[api/demo/seed] DB error:', err?.message || err);
+    return NextResponse.json(
+      { error: `Could not reach the database: ${err?.message || 'unknown error'}. Check MONGODB_URI and your Atlas Network Access list.` },
+      { status: 503 }
+    );
   }
-
-  await Notification.create({
-    userId: user.id,
-    type: 'system',
-    title: 'Demo data loaded',
-    message: `${seeded} example document${seeded > 1 ? 's' : ''} added to your index. Try searching for "error handling" or "refund policy".`,
-  });
-
-  return NextResponse.json({ seeded });
 }
