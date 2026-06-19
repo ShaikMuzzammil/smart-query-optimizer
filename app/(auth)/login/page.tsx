@@ -1,95 +1,112 @@
-'use client';
-
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import Link from 'next/link';
-import { signIn } from 'next-auth/react';
-import { LogIn, PlayCircle, Loader2 } from 'lucide-react';
-import toast from 'react-hot-toast';
+"use client";
+// app/(auth)/login/page.tsx
+import { useState } from "react";
+import { signIn } from "next-auth/react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { motion } from "framer-motion";
+import { Zap, Mail, Lock, Eye, EyeOff, ArrowRight, AlertCircle } from "lucide-react";
+import { toast } from "sonner";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState<'credentials' | 'demo' | null>(null);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPw, setShowPw] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  async function handleSubmit(e: React.FormEvent, demo = false) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setLoading(demo ? 'demo' : 'credentials');
-
-    const result = await signIn('credentials', {
-      email: demo ? 'demo@smartquery.com' : email,
-      password: demo ? 'password' : password,
-      redirect: false,
-    });
-
-    setLoading(null);
-
-    if (result?.error) {
-      toast.error(result.error === 'CredentialsSignin' ? 'Invalid email or password.' : result.error);
-      return;
+    setLoading(true); setError("");
+    try {
+      const res = await signIn("credentials", { email, password, redirect: false });
+      if (res?.error) { setError("Invalid email or password"); setLoading(false); return; }
+      toast.success("Welcome back!");
+      router.push("/dashboard");
+    } catch {
+      setError("Something went wrong. Please try again.");
+      setLoading(false);
     }
+  }
 
-    toast.success(demo ? 'Welcome to the demo workspace!' : 'Welcome back!');
-    router.push('/dashboard');
-    router.refresh();
+  async function handleDemo() {
+    setLoading(true);
+    const res = await signIn("credentials", { email: "demo@smartquery.pro", password: "demo123456", redirect: false });
+    if (res?.ok) { toast.success("Signed in as demo user!"); router.push("/dashboard"); }
+    else { setError("Demo account unavailable."); setLoading(false); }
   }
 
   return (
-    <div>
-      <h1 className="font-display text-2xl font-bold text-ink mb-1">Welcome back</h1>
-      <p className="text-sm text-ink-muted mb-6">Sign in to your SmartQuery Pro workspace.</p>
+    <div className="min-h-screen bg-[#030309] flex items-center justify-center px-4">
+      <div className="absolute inset-0 bg-cyber-grid opacity-30 pointer-events-none"/>
+      <div className="absolute -top-40 left-1/2 -translate-x-1/2 w-[600px] h-[400px] rounded-full pointer-events-none"
+        style={{background:"radial-gradient(circle,rgba(124,58,237,.12) 0%,transparent 70%)"}}/>
 
-      <form onSubmit={(e) => handleSubmit(e, false)} className="space-y-4">
-        <div>
-          <label className="block text-xs font-medium text-ink-muted mb-1.5">Email</label>
-          <input
-            type="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@example.com"
-            className="input-field"
-          />
+      <motion.div initial={{opacity:0,y:24}} animate={{opacity:1,y:0}} transition={{duration:.5}}
+        className="w-full max-w-md">
+        <div className="text-center mb-8">
+          <Link href="/" className="inline-flex items-center gap-2 mb-6">
+            <div className="w-9 h-9 rounded-xl bg-violet-500/20 border border-violet-500/40 flex items-center justify-center">
+              <Zap className="w-5 h-5 text-violet-400"/>
+            </div>
+            <span className="font-bold">SmartQuery <span className="text-violet-400">Pro</span></span>
+          </Link>
+          <h1 className="text-2xl font-black mb-2">Welcome back</h1>
+          <p className="text-slate-400 text-sm">Sign in to your account to continue optimizing</p>
         </div>
-        <div>
-          <label className="block text-xs font-medium text-ink-muted mb-1.5">Password</label>
-          <input
-            type="password"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="••••••••"
-            className="input-field"
-          />
-        </div>
-        <button type="submit" disabled={loading !== null} className="btn-primary w-full">
-          {loading === 'credentials' ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogIn className="w-4 h-4" />}
-          Sign in
-        </button>
-      </form>
 
-      <div className="relative my-6">
-        <div className="absolute inset-0 flex items-center">
-          <div className="w-full border-t border-border" />
-        </div>
-        <div className="relative flex justify-center text-xs">
-          <span className="bg-surface px-2 text-ink-faint">or</span>
-        </div>
-      </div>
+        <div className="glass-card rounded-2xl p-8">
+          {error && (
+            <motion.div initial={{opacity:0,y:-8}} animate={{opacity:1,y:0}}
+              className="flex items-center gap-2 p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-sm mb-5">
+              <AlertCircle className="w-4 h-4 flex-shrink-0"/>{error}
+            </motion.div>
+          )}
 
-      <button onClick={(e) => handleSubmit(e, true)} disabled={loading !== null} className="btn-secondary w-full">
-        {loading === 'demo' ? <Loader2 className="w-4 h-4 animate-spin" /> : <PlayCircle className="w-4 h-4" />}
-        Continue with demo account
-      </button>
-      <p className="text-center text-xs text-ink-faint mt-2 font-mono">demo@smartquery.com / password</p>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="text-xs text-slate-400 font-medium mb-1.5 block">Email</label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500"/>
+                <input type="email" value={email} onChange={e=>setEmail(e.target.value)} required
+                  placeholder="you@example.com"
+                  className="w-full bg-[#050510] border border-violet-500/20 rounded-lg pl-10 pr-4 py-2.5 text-sm text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-violet-500/50 transition-colors"/>
+              </div>
+            </div>
 
-      <p className="text-center text-sm text-ink-muted mt-6">
-        Don't have an account?{' '}
-        <Link href="/register" className="text-primary-light font-medium hover:underline">
-          Create one
-        </Link>
-      </p>
+            <div>
+              <label className="text-xs text-slate-400 font-medium mb-1.5 block">Password</label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500"/>
+                <input type={showPw?"text":"password"} value={password} onChange={e=>setPassword(e.target.value)} required
+                  placeholder="••••••••"
+                  className="w-full bg-[#050510] border border-violet-500/20 rounded-lg pl-10 pr-10 py-2.5 text-sm text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-violet-500/50 transition-colors"/>
+                <button type="button" onClick={()=>setShowPw(p=>!p)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300">
+                  {showPw?<EyeOff className="w-4 h-4"/>:<Eye className="w-4 h-4"/>}
+                </button>
+              </div>
+            </div>
+
+            <button type="submit" disabled={loading}
+              className="w-full py-2.5 bg-violet-600 hover:bg-violet-500 disabled:opacity-60 text-white font-semibold rounded-lg transition-all flex items-center justify-center gap-2 glow-violet">
+              {loading ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"/><span>Signing in…</span></> : <><span>Sign In</span><ArrowRight className="w-4 h-4"/></>}
+            </button>
+          </form>
+
+          <div className="relative my-5"><div className="absolute inset-0 flex items-center"><div className="w-full border-t border-violet-500/10"/></div><div className="relative flex justify-center text-xs text-slate-500 bg-transparent"><span className="bg-[#090918] px-3">or</span></div></div>
+
+          <button onClick={handleDemo} disabled={loading}
+            className="w-full py-2.5 border border-violet-500/25 hover:border-violet-500/50 text-slate-300 hover:text-white text-sm font-medium rounded-lg transition-all">
+            ⚡ Try Demo Account
+          </button>
+
+          <p className="text-center text-xs text-slate-500 mt-6">
+            No account? <Link href="/register" className="text-violet-400 hover:text-violet-300 font-medium">Create one free →</Link>
+          </p>
+        </div>
+      </motion.div>
     </div>
   );
 }

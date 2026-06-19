@@ -1,151 +1,102 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentUser } from '../../../lib/session';
-import { dbConnect, isDbConfigured } from '../../../lib/db/connect';
-import FileDoc from '../../../lib/db/models/FileDoc';
-import QueryLog from '../../../lib/db/models/QueryLog';
-import { InvertedIndex } from '../../../lib/search/invertedIndex';
-
-export const runtime = 'nodejs';
-
-function dayKey(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
-
-function lastNDays(n: number): string[] {
-  const days: string[] = [];
-  const now = new Date();
-  for (let i = n - 1; i >= 0; i--) {
-    const d = new Date(now);
-    d.setUTCDate(d.getUTCDate() - i);
-    days.push(dayKey(d));
-  }
-  return days;
-}
-
-function emptyAnalytics(extra: Record<string, unknown> = {}) {
-  return {
-    totals: { filesIndexed: 0, totalQueries: 0, indexTerms: 0, highImpactIssues: 0, avgReadabilityGrade: 'N/A' },
-    queriesOverTime: lastNDays(14).map((d) => ({ date: d, count: 0 })),
-    fileGrowth: lastNDays(14).map((d) => ({ date: d, count: 0 })),
-    topTerms: [],
-    sentimentTrend: lastNDays(14).map((d) => ({ date: d, positive: 0, negative: 0, neutral: 0 })),
-    recentQueries: [],
-    topFiles: [],
-    ...extra,
-  };
-}
+// app/api/analytics/route.ts
+import { NextResponse } from "next/server";
+import { getAuth } from "@/lib/auth";
+import { db } from "@/lib/db";
 
 export async function GET() {
-  const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  if (!isDbConfigured()) {
-    return NextResponse.json(emptyAnalytics({ dbStatus: 'not_configured' }));
-  }
-
   try {
-    await dbConnect();
+    const session = await getAuth();
+    if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const userId = session.user.id;
 
-    const files = await FileDoc.find({ userId: user.id }).select('fileName content createdAt analysis queryCount status').lean();
-    const queryLogs = await QueryLog.find({ userId: user.id }).sort({ createdAt: -1 }).limit(500).lean();
+    const [
+      totalQueries, avgGain, domainBreakdown, recentTrend, topGains, issueTypes,
+    ] = await Promise.all([
+      // Total query count
+      db.query.count({ where: { userId } }),
 
-    const indexedFiles = files.filter((f: any) => f.status === 'indexed');
+      // Average performance gain
+      db.query.aggregate({ where: { userId }, _avg: { performanceGain: true } }),
 
-    // Total terms via inverted index
-    const index = new InvertedIndex(
-      indexedFiles.map((d: any) => ({ id: d._id.toString(), fileName: d.fileName, content: d.content || '', uploadDate: d.createdAt }))
-    );
+      // Queries by domain
+      db.query.groupBy({
+        by: ["domain"],
+        where: { userId },
+        _count: { _all: true },
+        _avg: { performanceGain: true },
+        orderBy: { _count: { domain: "desc" } },
+      }),
 
-    // High impact issues = total issue count across files
-    const highImpactIssues = indexedFiles.reduce((sum: number, f: any) => sum + (f.analysis?.issues?.length || 0), 0);
+      // Last 14 days trend (1 entry per day)
+      db.$queryRaw<Array<{ date: string; count: bigint; avg_gain: number }>>`
+        SELECT
+          DATE(created_at)::text AS date,
+          COUNT(*)               AS count,
+          AVG(performance_gain)  AS avg_gain
+        FROM queries
+        WHERE user_id = ${userId}
+          AND created_at >= NOW() - INTERVAL '14 days'
+        GROUP BY DATE(created_at)
+        ORDER BY date ASC
+      `,
 
-    // Average readability grade level (most common)
-    const gradeCounts = new Map<string, number>();
-    for (const f of indexedFiles as any[]) {
-      const grade = f.analysis?.readability?.gradeLevel;
-      if (grade) gradeCounts.set(grade, (gradeCounts.get(grade) || 0) + 1);
+      // Top 5 best optimized queries
+      db.query.findMany({
+        where: { userId },
+        orderBy: { performanceGain: "desc" },
+        take: 5,
+        select: { id: true, title: true, domain: true, performanceGain: true, createdAt: true },
+      }),
+
+      // Most common issue types
+      db.$queryRaw<Array<{ severity: string; count: bigint }>>`
+        SELECT
+          issue->>'severity' AS severity,
+          COUNT(*)           AS count
+        FROM queries, jsonb_array_elements(issues::jsonb) AS issue
+        WHERE user_id = ${userId}
+        GROUP BY issue->>'severity'
+        ORDER BY count DESC
+      `,
+    ]);
+
+    // Streak calculation
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    let streak = 0;
+    for (let i = 0; i < 30; i++) {
+      const day = new Date(today);
+      day.setDate(today.getDate() - i);
+      const next = new Date(day);
+      next.setDate(day.getDate() + 1);
+      const count = await db.query.count({
+        where: { userId, createdAt: { gte: day, lt: next } },
+      });
+      if (count > 0) streak++;
+      else if (i > 0) break;
     }
-    let avgReadabilityGrade = 'N/A';
-    let maxCount = 0;
-    for (const [grade, count] of gradeCounts.entries()) {
-      if (count > maxCount) {
-        maxCount = count;
-        avgReadabilityGrade = grade;
-      }
-    }
-
-    // Queries over time (last 14 days)
-    const days = lastNDays(14);
-    const queryCountByDay = new Map<string, number>();
-    for (const day of days) queryCountByDay.set(day, 0);
-    for (const log of queryLogs as any[]) {
-      const key = dayKey(new Date(log.createdAt));
-      if (queryCountByDay.has(key)) queryCountByDay.set(key, (queryCountByDay.get(key) || 0) + 1);
-    }
-
-    // File growth (last 14 days)
-    const fileCountByDay = new Map<string, number>();
-    for (const day of days) fileCountByDay.set(day, 0);
-    for (const f of files as any[]) {
-      const key = dayKey(new Date(f.createdAt));
-      if (fileCountByDay.has(key)) fileCountByDay.set(key, (fileCountByDay.get(key) || 0) + 1);
-    }
-
-    // Sentiment trend by day
-    const sentimentByDay = new Map<string, { positive: number; negative: number; neutral: number }>();
-    for (const day of days) sentimentByDay.set(day, { positive: 0, negative: 0, neutral: 0 });
-    for (const f of indexedFiles as any[]) {
-      const key = dayKey(new Date(f.createdAt));
-      if (sentimentByDay.has(key) && f.analysis?.sentiment?.label) {
-        const bucket = sentimentByDay.get(key)!;
-        bucket[f.analysis.sentiment.label as 'positive' | 'negative' | 'neutral']++;
-      }
-    }
-
-    // Top terms across corpus (aggregate keyword scores)
-    const termScores = new Map<string, number>();
-    for (const f of indexedFiles as any[]) {
-      for (const kw of f.analysis?.keywords || []) {
-        termScores.set(kw.term, (termScores.get(kw.term) || 0) + kw.score);
-      }
-    }
-    const topTerms = Array.from(termScores.entries())
-      .map(([term, score]) => ({ term, score: Math.round(score * 1000) / 1000 }))
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 10);
-
-    // Top files by query count
-    const topFiles = [...files]
-      .sort((a: any, b: any) => (b.queryCount || 0) - (a.queryCount || 0))
-      .slice(0, 5)
-      .map((f: any) => ({ fileName: f.fileName, queryCount: f.queryCount || 0, id: f._id.toString() }));
-
-    // Recent queries
-    const recentQueries = (queryLogs as any[]).slice(0, 8).map((q) => ({
-      query: q.query,
-      correctedQuery: q.correctedQuery,
-      resultCount: q.resultCount,
-      createdAt: q.createdAt,
-    }));
 
     return NextResponse.json({
-      totals: {
-        filesIndexed: indexedFiles.length,
-        totalQueries: queryLogs.length,
-        indexTerms: index.totalTerms(),
-        highImpactIssues,
-        avgReadabilityGrade,
-      },
-      queriesOverTime: days.map((d) => ({ date: d, count: queryCountByDay.get(d) || 0 })),
-      fileGrowth: days.map((d) => ({ date: d, count: fileCountByDay.get(d) || 0 })),
-      topTerms,
-      sentimentTrend: days.map((d) => ({ date: d, ...sentimentByDay.get(d)! })),
-      recentQueries,
-      topFiles,
-      dbStatus: 'connected',
+      totalQueries,
+      avgGain: Math.round(avgGain._avg.performanceGain ?? 0),
+      totalIssuesFixed: await db.query.findMany({ where: { userId }, select: { issues: true } })
+        .then((qs: Array<{ issues: unknown }>) => qs.reduce((s: number, q) => s + (Array.isArray(q.issues) ? q.issues.length : 0), 0)),
+      streak,
+      domainBreakdown: domainBreakdown.map((d: any) => ({
+        domain: d.domain ?? "General",
+        count: d._count._all,
+        avgGain: Math.round(d._avg.performanceGain ?? 0),
+      })),
+      recentTrend: recentTrend.map((r: any) => ({
+        date: r.date,
+        count: Number(r.count),
+        avgGain: Math.round(r.avg_gain),
+      })),
+      topGains,
+      issueTypes: issueTypes.map((i: any) => ({ severity: i.severity, count: Number(i.count) })),
     });
-  } catch (err: any) {
-    console.error('[api/analytics] DB error:', err?.message || err);
-    return NextResponse.json(emptyAnalytics({ dbStatus: 'error', dbError: err?.message || 'Database connection failed' }), { status: 200 });
+  } catch (err) {
+    console.error("[ANALYTICS]", err);
+    return NextResponse.json({ error: "Failed to load analytics" }, { status: 500 });
   }
 }

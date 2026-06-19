@@ -1,54 +1,62 @@
-import { clsx, type ClassValue } from 'clsx';
-import { twMerge } from 'tailwind-merge';
+// lib/utils.ts
+import { type ClassValue, clsx } from "clsx";
+import { twMerge } from "tailwind-merge";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export function formatNumber(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return n.toString();
+export function formatDate(date: Date | string) {
+  return new Date(date).toLocaleDateString("en-US", {
+    year: "numeric", month: "short", day: "numeric",
+  });
 }
 
-export function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const units = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(1024));
-  return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`;
+export function formatTime(date: Date | string) {
+  return new Date(date).toLocaleTimeString("en-US", {
+    hour: "2-digit", minute: "2-digit",
+  });
 }
 
-export function timeAgo(date: string | Date): string {
-  const now = new Date();
-  const then = new Date(date);
-  const diffMs = now.getTime() - then.getTime();
-  const diffSec = Math.floor(diffMs / 1000);
-
-  if (diffSec < 60) return 'just now';
-  const diffMin = Math.floor(diffSec / 60);
-  if (diffMin < 60) return `${diffMin}m ago`;
-  const diffHr = Math.floor(diffMin / 60);
-  if (diffHr < 24) return `${diffHr}h ago`;
-  const diffDay = Math.floor(diffHr / 24);
-  if (diffDay < 30) return `${diffDay}d ago`;
-  const diffMonth = Math.floor(diffDay / 30);
-  return `${diffMonth}mo ago`;
+export function timeAgo(date: Date | string) {
+  const seconds = Math.floor((Date.now() - new Date(date).getTime()) / 1000);
+  if (seconds < 60) return "just now";
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+  return `${Math.floor(seconds / 86400)}d ago`;
 }
 
-export function truncate(str: string, len: number): string {
-  if (str.length <= len) return str;
-  return str.slice(0, len).trim() + '…';
+export function truncate(str: string, length: number) {
+  return str.length > length ? str.slice(0, length) + "…" : str;
 }
 
-export const FILE_TYPE_COLORS: Record<string, string> = {
-  txt: '#4F8EF7',
-  md: '#22C55E',
-  pdf: '#EF4444',
-  docx: '#3B82F6',
-};
+export function gainColor(gain: number) {
+  if (gain >= 80) return "text-emerald-400";
+  if (gain >= 60) return "text-amber-400";
+  return "text-rose-400";
+}
 
-export const SENTIMENT_COLORS: Record<string, string> = {
-  positive: '#22C55E',
-  negative: '#EF4444',
-  neutral: '#8B9CC8',
+export function gainBg(gain: number) {
+  if (gain >= 80) return "bg-emerald-400/10 border-emerald-400/20";
+  if (gain >= 60) return "bg-amber-400/10 border-amber-400/20";
+  return "bg-rose-400/10 border-rose-400/20";
+}
+
+export const SEVERITY_CONFIG = {
+  critical: { color: "text-rose-400",   bg: "bg-rose-400/10",   border: "border-rose-400/30",   dot: "bg-rose-400",   label: "CRIT" },
+  high:     { color: "text-orange-400", bg: "bg-orange-400/10", border: "border-orange-400/30", dot: "bg-orange-400", label: "HIGH" },
+  medium:   { color: "text-amber-400",  bg: "bg-amber-400/10",  border: "border-amber-400/30",  dot: "bg-amber-400",  label: "MED"  },
+  low:      { color: "text-emerald-400",bg: "bg-emerald-400/10",border: "border-emerald-400/30",dot: "bg-emerald-400",label: "LOW"  },
+} as const;
+
+export const DOMAIN_CONFIG: Record<string, { icon: string; color: string }> = {
+  "E-Commerce":  { icon: "🛒", color: "#f72585" },
+  "Healthcare":  { icon: "🏥", color: "#06d6a0" },
+  "Finance":     { icon: "💹", color: "#fbbf24" },
+  "HR":          { icon: "👥", color: "#38bdf8" },
+  "Analytics":   { icon: "📊", color: "#a78bfa" },
+  "Social":      { icon: "💬", color: "#f97316" },
+  "Real Estate": { icon: "🏠", color: "#10b981" },
+  "Logistics":   { icon: "🚚", color: "#8b5cf6" },
+  "General":     { icon: "⚡", color: "#7c3aed" },
 };

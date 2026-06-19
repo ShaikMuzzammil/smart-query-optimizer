@@ -1,91 +1,64 @@
-import { NextAuthOptions } from 'next-auth';
-import CredentialsProvider from 'next-auth/providers/credentials';
-import bcrypt from 'bcryptjs';
-import { dbConnect, isDbConfigured } from './db/connect';
-import User from './db/models/User';
-import { DEMO_USER_ID, DEMO_EMAIL, DEMO_PASSWORD } from './constants';
+// lib/auth.ts
+import { NextAuthOptions, getServerSession } from "next-auth";
+import CredentialsProvider from "next-auth/providers/credentials";
+import { db } from "@/lib/db";
+import bcrypt from "bcryptjs";
+import { z } from "zod";
 
-export { DEMO_USER_ID, DEMO_EMAIL, DEMO_PASSWORD };
-
-// NextAuth THROWS in production if no secret is configured, which crashes
-// every page (since getCurrentUser() runs in the root layout chain). Fall
-// back to a generated default with a loud warning instead of a hard crash -
-// you should still set a real NEXTAUTH_SECRET in your environment.
-const resolvedSecret =
-  process.env.NEXTAUTH_SECRET ||
-  (() => {
-    console.warn(
-      '\n[smartquery-pro] WARNING: NEXTAUTH_SECRET is not set. Using an insecure ' +
-        'fallback so the app does not crash, but sessions are NOT secure and will ' +
-        'be invalidated on every redeploy. Set NEXTAUTH_SECRET in your environment ' +
-        '(generate one with: openssl rand -base64 32).\n'
-    );
-    return 'smartquery-pro-insecure-fallback-secret-please-set-NEXTAUTH_SECRET';
-  })();
+const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(6),
+});
 
 export const authOptions: NextAuthOptions = {
-  session: { strategy: 'jwt' },
-  pages: {
-    signIn: '/login',
-  },
+  session: { strategy: "jwt", maxAge: 30 * 24 * 60 * 60 },
+  pages: { signIn: "/login", error: "/login" },
   providers: [
     CredentialsProvider({
-      name: 'Credentials',
+      name: "credentials",
       credentials: {
-        email: { label: 'Email', type: 'email' },
-        password: { label: 'Password', type: 'password' },
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
-        const email = credentials?.email?.toLowerCase().trim();
-        const password = credentials?.password || '';
+        const parsed = loginSchema.safeParse(credentials);
+        if (!parsed.success) return null;
+        const { email, password } = parsed.data;
 
-        if (!email || !password) return null;
+        const user = await db.user.findUnique({ where: { email } });
+        if (!user || !user.password) return null;
 
-        // Demo / guest mode - always available, no database required.
-        if (email === DEMO_EMAIL && password === DEMO_PASSWORD) {
-          return {
-            id: DEMO_USER_ID,
-            name: 'Demo User',
-            email: DEMO_EMAIL,
-            plan: 'free',
-          } as any;
-        }
-
-        if (!isDbConfigured()) {
-          throw new Error('MONGODB_URI is not configured. Use the demo account or set up MongoDB.');
-        }
-
-        await dbConnect();
-        const user = await User.findOne({ email });
-        if (!user) return null;
-
-        const valid = await bcrypt.compare(password, user.passwordHash);
+        const valid = await bcrypt.compare(password, user.password);
         if (!valid) return null;
 
-        return {
-          id: user._id.toString(),
-          name: user.name,
-          email: user.email,
-          plan: user.plan,
-        } as any;
+        return { id: user.id, email: user.email, name: user.name, image: user.image };
       },
     }),
   ],
   callbacks: {
     async jwt({ token, user }) {
-      if (user) {
-        token.id = (user as any).id;
-        token.plan = (user as any).plan || 'free';
-      }
+      if (user) token.id = user.id;
       return token;
     },
     async session({ session, token }) {
-      if (session.user) {
-        (session.user as any).id = token.id;
-        (session.user as any).plan = token.plan;
-      }
+      if (token && session.user) session.user.id = token.id as string;
       return session;
     },
   },
-  secret: resolvedSecret,
+  secret: process.env.NEXTAUTH_SECRET,
 };
+
+export const getAuth = () => getServerSession(authOptions);
+
+export async function getCurrentUser() {
+  try {
+    const session = await getAuth();
+    if (!session?.user?.id) return null;
+    return db.user.findUnique({
+      where: { id: session.user.id },
+      select: { id: true, name: true, email: true, image: true, role: true, createdAt: true },
+    });
+  } catch {
+    return null;
+  }
+}
