@@ -174,6 +174,13 @@ prisma/
 
 ## 8 · Troubleshooting
 
+**Build fails with "Failed to collect page data for /api/..." or "@prisma/client did not initialize yet"**
+→ This is Next.js evaluating your API routes at build time, which triggers Prisma Client setup. Two causes, both already fixed in this codebase:
+  1. Missing `binaryTargets` in `prisma/schema.prisma` — Vercel's build machine and Lambda runtime can use different OS images, so Prisma needs `binaryTargets = ["native", "rhel-openssl-3.0.x"]` to bundle the right engine for both.
+  2. Any code that synchronously `throw`s if an env var is missing, inside a module imported by an API route — this kills the *entire build*, not just that route. `lib/db.ts` intentionally never throws at import time; it fails lazily on first real query instead, which your route handlers already catch.
+  
+  If you still hit this after pulling the latest code: confirm `DATABASE_URL` is set for **all three** environments in Vercel (Production/Preview/Development), then **redeploy** — env var changes never apply to an existing build.
+
 **Build fails with "ESLint must be installed"**
 → Never set `NODE_ENV=production` manually in Vercel env vars — it makes `npm install` skip devDependencies.
 
@@ -181,10 +188,13 @@ prisma/
 → `NEXTAUTH_SECRET` missing. Confirm it's set in all three environments (Production/Preview/Development) in Vercel.
 
 **Prisma Client errors at runtime**
-→ Confirm `DATABASE_URL` uses the **pooled** connection string with `?pgbouncer=true`, and `DIRECT_URL` uses the **unpooled** one.
+→ Confirm `DATABASE_URL` uses the **pooled** connection string with `?pgbouncer=true`, and `DIRECT_URL` uses the **unpooled** one. Visit `/api/health` to see the exact connection error.
 
 **Login works locally but not on Vercel**
 → `NEXTAUTH_URL` doesn't match your deployed domain. Update it and redeploy (see step 5).
+
+**Favicon/tab icon not showing or showing a generic placeholder**
+→ Browsers cache favicons aggressively per-origin. After deploying, hard-refresh (Ctrl/Cmd+Shift+R) or open in an incognito window to see the updated icon immediately.
 
 ---
 

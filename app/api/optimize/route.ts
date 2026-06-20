@@ -5,6 +5,8 @@ import { optimizeSQL } from "@/lib/anthropic";
 import { db } from "@/lib/db";
 import { z } from "zod";
 
+export const dynamic = "force-dynamic";
+
 const schema = z.object({ query: z.string().min(5).max(50000) });
 
 export async function POST(req: Request) {

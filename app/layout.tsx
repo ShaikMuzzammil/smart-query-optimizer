@@ -6,6 +6,7 @@ import { Toaster } from "sonner";
 const inter = { variable: "" };
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"),
   title: { default: "SmartQuery Pro", template: "%s | SmartQuery Pro" },
   description: "AI-powered SQL query optimizer with real-time analysis, Neon PostgreSQL, and Claude AI. Detect N+1 queries, missing indexes, and anti-patterns instantly.",
   keywords: ["SQL optimizer", "query optimization", "AI", "PostgreSQL", "database performance", "Claude AI"],
