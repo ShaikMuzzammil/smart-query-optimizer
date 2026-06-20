@@ -5,7 +5,7 @@ import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Zap, Mail, Lock, Eye, EyeOff, ArrowRight, AlertCircle } from "lucide-react";
+import { Zap, Mail, Lock, Eye, EyeOff, ArrowRight, AlertCircle, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 
 export default function LoginPage() {
@@ -15,26 +15,25 @@ export default function LoginPage() {
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [noAccount, setNoAccount] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setLoading(true); setError("");
+    setLoading(true); setError(""); setNoAccount(false);
     try {
       const res = await signIn("credentials", { email, password, redirect: false });
-      if (res?.error) { setError("Invalid email or password"); setLoading(false); return; }
+      if (res?.error) {
+        setError("Incorrect email or password.");
+        setNoAccount(true); // we can't distinguish "no account" from "wrong password" safely server-side, so always offer the register path
+        setLoading(false);
+        return;
+      }
       toast.success("Welcome back!");
       router.push("/dashboard");
     } catch {
       setError("Something went wrong. Please try again.");
       setLoading(false);
     }
-  }
-
-  async function handleDemo() {
-    setLoading(true);
-    const res = await signIn("credentials", { email: "demo@smartquery.pro", password: "demo123456", redirect: false });
-    if (res?.ok) { toast.success("Signed in as demo user!"); router.push("/dashboard"); }
-    else { setError("Demo account unavailable."); setLoading(false); }
   }
 
   return (
@@ -59,8 +58,15 @@ export default function LoginPage() {
         <div className="glass-card rounded-2xl p-8">
           {error && (
             <motion.div initial={{opacity:0,y:-8}} animate={{opacity:1,y:0}}
-              className="flex items-center gap-2 p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-sm mb-5">
-              <AlertCircle className="w-4 h-4 flex-shrink-0"/>{error}
+              className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-sm mb-5">
+              <div className="flex items-center gap-2 text-rose-400">
+                <AlertCircle className="w-4 h-4 flex-shrink-0"/>{error}
+              </div>
+              {noAccount && (
+                <Link href="/register" className="flex items-center gap-1.5 mt-2 text-violet-400 hover:text-violet-300 font-medium text-xs">
+                  <UserPlus className="w-3.5 h-3.5"/> Don&apos;t have an account yet? Create one free →
+                </Link>
+              )}
             </motion.div>
           )}
 
@@ -94,13 +100,6 @@ export default function LoginPage() {
               {loading ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"/><span>Signing in…</span></> : <><span>Sign In</span><ArrowRight className="w-4 h-4"/></>}
             </button>
           </form>
-
-          <div className="relative my-5"><div className="absolute inset-0 flex items-center"><div className="w-full border-t border-violet-500/10"/></div><div className="relative flex justify-center text-xs text-slate-500 bg-transparent"><span className="bg-[#090918] px-3">or</span></div></div>
-
-          <button onClick={handleDemo} disabled={loading}
-            className="w-full py-2.5 border border-violet-500/25 hover:border-violet-500/50 text-slate-300 hover:text-white text-sm font-medium rounded-lg transition-all">
-            ⚡ Try Demo Account
-          </button>
 
           <p className="text-center text-xs text-slate-500 mt-6">
             No account? <Link href="/register" className="text-violet-400 hover:text-violet-300 font-medium">Create one free →</Link>

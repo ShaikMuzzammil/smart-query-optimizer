@@ -33,7 +33,6 @@ Fill in `.env.local` (see [Environment Variables](#3--environment-variables) bel
 ```bash
 npx prisma generate
 npx prisma db push        # creates tables in Neon
-npm run db:seed           # optional: seeds a demo user
 npm run dev
 ```
 
@@ -129,6 +128,7 @@ Run this from your local machine with the same `DATABASE_URL`/`DIRECT_URL` as pr
 
 ## 6 · Post-Deploy Checklist
 
+- [ ] Visit `https://your-app.vercel.app/api/health` → should return `{"status":"✅ healthy",...}`. If it returns `❌ misconfigured`, the JSON tells you exactly which env var or DB connection is broken — fix that first before testing anything else.
 - [ ] Visit your Vercel URL → landing page renders with animations.
 - [ ] `/register` → create an account → redirects to `/dashboard`.
 - [ ] `/optimizer` → paste a query with `SELECT * FROM a, b WHERE a.id=b.id` → live scanner flags "Implicit JOIN" instantly.
@@ -168,7 +168,6 @@ lib/
   utils.ts                       — shared helpers, design tokens
 prisma/
   schema.prisma                  — User, Query, Account, Session models
-  seed.ts                        — demo data seeder
 ```
 
 ---

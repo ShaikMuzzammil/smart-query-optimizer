@@ -1,11 +1,11 @@
 "use client";
 // app/page.tsx
-import { motion, useScroll, useTransform, AnimatePresence } from "framer-motion";
+import { motion, useScroll, useTransform } from "framer-motion";
 import Link from "next/link";
-import { useRef, useState, useEffect } from "react";
+import { useRef } from "react";
 import { ArrowRight, Zap, Shield, BarChart3, Database, Code2, Star,
-         CheckCircle2, Github, Twitter, ChevronRight, Sparkles,
-         TrendingUp, Clock, Users } from "lucide-react";
+         CheckCircle2, LogIn, Sparkles,
+         TrendingUp, Clock } from "lucide-react";
 
 // ── Framer Motion variants
 const fadeUp   = { hidden:{opacity:0,y:30}, show:{opacity:1,y:0,transition:{duration:.6,ease:"easeOut"}} };
@@ -93,8 +93,8 @@ export default function LandingPage() {
             <span className="font-bold text-sm">SmartQuery <span className="text-violet-400">Pro</span></span>
           </div>
           <div className="hidden md:flex items-center gap-6 text-sm text-slate-400">
-            {["Features","Examples","Analytics","Pricing"].map(l=>(
-              <a key={l} href={`#${l.toLowerCase()}`} className="hover:text-white transition-colors">{l}</a>
+            {[["Features","#features"],["How It Works","#how-it-works"]].map(([label,href])=>(
+              <a key={label} href={href} className="hover:text-white transition-colors">{label}</a>
             ))}
           </div>
           <div className="flex items-center gap-3">
@@ -135,7 +135,7 @@ export default function LandingPage() {
               </Link>
               <Link href="/login"
                 className="px-8 py-3.5 border border-violet-500/30 hover:border-violet-500/60 text-slate-300 hover:text-white font-medium rounded-xl transition-all backdrop-blur-sm flex items-center gap-2">
-                <Github className="w-4 h-4"/> Sign In
+                <LogIn className="w-4 h-4"/> Sign In
               </Link>
             </motion.div>
           </motion.div>
@@ -181,7 +181,7 @@ export default function LandingPage() {
       </section>
 
       {/* ── FEATURES ── */}
-      <section id="features" className="relative z-10 py-24 px-6">
+      <section id="features" className="relative z-10 py-24 px-6 scroll-mt-20">
         <div className="max-w-7xl mx-auto">
           <motion.div initial={{opacity:0,y:20}} whileInView={{opacity:1,y:0}} viewport={{once:true}}
             className="text-center mb-16">
@@ -213,7 +213,7 @@ export default function LandingPage() {
       </section>
 
       {/* ── HOW IT WORKS ── */}
-      <section className="relative z-10 py-24 px-6 border-t border-violet-500/10">
+      <section id="how-it-works" className="relative z-10 py-24 px-6 border-t border-violet-500/10 scroll-mt-20">
         <div className="max-w-5xl mx-auto">
           <motion.div initial={{opacity:0,y:20}} whileInView={{opacity:1,y:0}} viewport={{once:true}}
             className="text-center mb-16">
@@ -276,11 +276,7 @@ export default function LandingPage() {
             <span className="text-sm font-bold">SmartQuery <span className="text-violet-400">Pro</span></span>
           </div>
           <p className="text-xs text-slate-500">Built with Next.js 14 · Neon PostgreSQL · Claude AI · Vercel</p>
-          <div className="flex gap-4 text-slate-500 text-xs">
-            <a href="#" className="hover:text-white transition-colors">Privacy</a>
-            <a href="#" className="hover:text-white transition-colors">Terms</a>
-            <a href="https://github.com" className="hover:text-white transition-colors flex items-center gap-1"><Github className="w-3.5 h-3.5"/> GitHub</a>
-          </div>
+          <Link href="/register" className="text-xs text-violet-400 hover:text-violet-300 font-medium">Get started free →</Link>
         </div>
       </footer>
     </div>
