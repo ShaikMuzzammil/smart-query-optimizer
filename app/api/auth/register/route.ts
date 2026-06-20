@@ -4,6 +4,8 @@ import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 import { z } from "zod";
 
+export const dynamic = "force-dynamic";
+
 const schema = z.object({
   name: z.string().min(2).max(50),
   email: z.string().email(),
@@ -40,8 +42,18 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "That email is already registered — try signing in instead." }, { status: 409 });
     }
 
+    // Tables don't exist yet — `prisma db push` was never run against this DB.
+    // This is the most common real-world cause of registration failing on a
+    // fresh Vercel + Neon setup: the connection works fine, but the schema
+    // was never pushed, so the `users` table is missing.
+    if (message.includes("does not exist") || message.toLowerCase().includes("relation")) {
+      return NextResponse.json(
+        { error: "Database tables aren't set up yet. Run `npx prisma db push` against your Neon database, then try again. Visit /api/health for full diagnostics." },
+        { status: 503 }
+      );
+    }
+
     // Database connection / initialization failures — version-agnostic detection
-    // (avoids relying on specific Prisma error class exports, which differ across versions)
     if (
       message.includes("Can't reach database") ||
       message.includes("did not initialize") ||
@@ -56,7 +68,7 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json(
-      { error: "Registration failed unexpectedly. Visit /api/health to diagnose the issue." },
+      { error: `Registration failed: ${message.slice(0, 150)}. Visit /api/health to diagnose.` },
       { status: 500 }
     );
   }

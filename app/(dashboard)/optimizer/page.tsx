@@ -113,7 +113,7 @@ export default function OptimizerPage() {
 
             <button onClick={optimize} disabled={loading || !query.trim()}
               className="w-full mt-3 py-3 bg-gradient-to-r from-violet-600 to-violet-700 hover:from-violet-500 hover:to-violet-600 disabled:opacity-40 text-white font-semibold rounded-xl transition-all flex items-center justify-center gap-2 glow-violet">
-              {loading ? <><Loader2 className="w-4 h-4 animate-spin"/>Analyzing with Claude AI…</> : <><Zap className="w-4 h-4"/>Optimize with AI</>}
+              {loading ? <><Loader2 className="w-4 h-4 animate-spin"/>Analyzing with AI…</> : <><Zap className="w-4 h-4"/>Optimize with AI</>}
             </button>
           </div>
 

@@ -44,7 +44,7 @@ export default function SettingsPage() {
           <div className="space-y-3">
             {[
               { label:"Database", desc:"Neon PostgreSQL — Serverless", icon:<Database className="w-4 h-4"/> },
-              { label:"AI Engine", desc:"Claude Sonnet 4.6 via Anthropic API", icon:<Zap className="w-4 h-4"/> },
+              { label:"AI Engine", desc:"Advanced AI optimization engine", icon:<Zap className="w-4 h-4"/> },
               { label:"Rate Limit", desc:"20 optimizations per hour", icon:<Shield className="w-4 h-4"/> },
             ].map(item => (
               <div key={item.label} className="flex items-center gap-3 p-3 bg-violet-500/5 rounded-xl">

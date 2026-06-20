@@ -8,15 +8,15 @@ const inter = { variable: "" };
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"),
   title: { default: "SmartQuery Pro", template: "%s | SmartQuery Pro" },
-  description: "AI-powered SQL query optimizer with real-time analysis, Neon PostgreSQL, and Claude AI. Detect N+1 queries, missing indexes, and anti-patterns instantly.",
-  keywords: ["SQL optimizer", "query optimization", "AI", "PostgreSQL", "database performance", "Claude AI"],
+  description: "AI-powered SQL query optimizer with real-time analysis, Neon PostgreSQL, and an advanced AI engine. Detect N+1 queries, missing indexes, and anti-patterns instantly.",
+  keywords: ["SQL optimizer", "query optimization", "AI", "PostgreSQL", "database performance", "AI optimization"],
   authors: [{ name: "SmartQuery Pro" }],
   openGraph: {
     type: "website",
     locale: "en_US",
     url: process.env.NEXT_PUBLIC_APP_URL,
     title: "SmartQuery Pro — AI SQL Optimizer",
-    description: "Optimize SQL queries with Claude AI. Detect issues, get index recommendations, and reduce query complexity in seconds.",
+    description: "Optimize SQL queries with advanced AI. Detect issues, get index recommendations, and reduce query complexity in seconds.",
     siteName: "SmartQuery Pro",
   },
   twitter: {

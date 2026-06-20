@@ -5,7 +5,7 @@ import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Zap, Mail, Lock, User, Eye, EyeOff, ArrowRight, AlertCircle, CheckCircle2 } from "lucide-react";
+import { Zap, Mail, Lock, User, Eye, EyeOff, ArrowRight, ArrowLeft, AlertCircle, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 
 export default function RegisterPage() {
@@ -46,6 +46,10 @@ export default function RegisterPage() {
       <div className="absolute inset-0 bg-cyber-grid opacity-30 pointer-events-none"/>
       <div className="absolute -top-40 left-1/2 -translate-x-1/2 w-[600px] h-[400px] rounded-full pointer-events-none"
         style={{background:"radial-gradient(circle,rgba(6,214,160,.1) 0%,transparent 70%)"}}/>
+
+      <Link href="/" className="fixed top-5 left-5 z-20 flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-violet-500/20 bg-violet-500/5 hover:bg-violet-500/15 hover:border-violet-500/40 text-slate-400 hover:text-white text-xs font-medium transition-all">
+        <ArrowLeft className="w-3.5 h-3.5"/> Home
+      </Link>
 
       <motion.div initial={{opacity:0,y:24}} animate={{opacity:1,y:0}} transition={{duration:.5}}
         className="w-full max-w-md">

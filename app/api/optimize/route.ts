@@ -31,7 +31,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // Call Claude AI
+    // Call AI optimization engine
     const start = Date.now();
     const result = await optimizeSQL(query);
     const executionTimeMs = Date.now() - start;

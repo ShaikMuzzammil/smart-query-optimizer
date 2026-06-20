@@ -35,7 +35,7 @@ ORDER BY revenue DESC
 LIMIT 100;`;
 
 const FEATURES = [
-  { icon:<Zap className="w-5 h-5"/>, title:"Claude AI Optimization", desc:"Powered by Claude Sonnet — the same model trusted by Fortune 500 teams. Instant rewrites with detailed explanations.", color:"violet" },
+  { icon:<Zap className="w-5 h-5"/>, title:"Advanced AI Optimization", desc:"Enterprise-grade AI rewrites your queries instantly, with full explanations and zero guesswork.", color:"violet" },
   { icon:<Shield className="w-5 h-5"/>, title:"Live Anti-Pattern Scanner", desc:"10 regex-based rules detect N+1 queries, leading wildcards, implicit joins, and more as you type — zero API latency.", color:"emerald" },
   { icon:<BarChart3 className="w-5 h-5"/>, title:"Real-Time Analytics", desc:"Track performance gains, issue types, and optimization streaks. Recharts dashboards update with every query.", color:"pink" },
   { icon:<Database className="w-5 h-5"/>, title:"Neon PostgreSQL Storage", desc:"Every optimization saved permanently. Filter by domain, search by content, export as SQL or JSON.", color:"amber" },
@@ -114,7 +114,7 @@ export default function LandingPage() {
             <motion.div variants={fadeUp}
               className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-violet-500/30 bg-violet-500/10 text-violet-300 text-xs mb-6">
               <Sparkles className="w-3.5 h-3.5"/>
-              Powered by Claude Sonnet AI · Neon PostgreSQL
+              Powered by Advanced AI · Neon PostgreSQL
             </motion.div>
 
             <motion.h1 variants={fadeUp} className="text-5xl md:text-7xl font-black tracking-tight mb-6 leading-none">
@@ -152,7 +152,7 @@ export default function LandingPage() {
               </div>
             </div>
             <div>
-              <SqlBlock code={AFTER_SQL} label="✓ OPTIMIZED · Claude AI" gain="+82%"/>
+              <SqlBlock code={AFTER_SQL} label="✓ OPTIMIZED · AI Engine" gain="+82%"/>
               <div className="mt-3 flex flex-wrap gap-2">
                 {["LEFT JOIN + GROUP BY","Range Date Filter","LIMIT 100 Added"].map(t=>(
                   <span key={t} className="text-[10px] px-2 py-1 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">✓ {t}</span>
@@ -168,7 +168,7 @@ export default function LandingPage() {
         <div className="max-w-5xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-6">
           {STATS.map((s,i)=>(
             <motion.div key={s.label}
-              initial={{opacity:0,y:20}} whileInView={{opacity:1,y:0}} viewport={{once:true}}
+              initial={{opacity:0,y:20}} animate={{opacity:1,y:0}}
               transition={{delay:i*.1}}
               className="text-center">
               <div className="text-3xl font-black text-violet-400 mb-1 font-mono">{s.value}</div>
@@ -183,7 +183,7 @@ export default function LandingPage() {
       {/* ── FEATURES ── */}
       <section id="features" className="relative z-10 py-24 px-6 scroll-mt-20">
         <div className="max-w-7xl mx-auto">
-          <motion.div initial={{opacity:0,y:20}} whileInView={{opacity:1,y:0}} viewport={{once:true}}
+          <motion.div initial={{opacity:0,y:20}} animate={{opacity:1,y:0}}
             className="text-center mb-16">
             <div className="text-xs text-violet-400 font-medium tracking-widest uppercase mb-4">Everything You Need</div>
             <h2 className="text-4xl font-black mb-4">Built for Database Performance</h2>
@@ -193,7 +193,7 @@ export default function LandingPage() {
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
             {FEATURES.map((f,i)=>(
               <motion.div key={f.title}
-                initial={{opacity:0,y:30}} whileInView={{opacity:1,y:0}} viewport={{once:true}}
+                initial={{opacity:0,y:30}} animate={{opacity:1,y:0}}
                 transition={{delay:i*.08}}
                 className="glass-card glass-card-hover rounded-2xl p-6 group">
                 <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-4 
@@ -215,7 +215,7 @@ export default function LandingPage() {
       {/* ── HOW IT WORKS ── */}
       <section id="how-it-works" className="relative z-10 py-24 px-6 border-t border-violet-500/10 scroll-mt-20">
         <div className="max-w-5xl mx-auto">
-          <motion.div initial={{opacity:0,y:20}} whileInView={{opacity:1,y:0}} viewport={{once:true}}
+          <motion.div initial={{opacity:0,y:20}} animate={{opacity:1,y:0}}
             className="text-center mb-16">
             <h2 className="text-4xl font-black mb-4">Three Steps to Faster SQL</h2>
             <p className="text-slate-400">No configuration. No infrastructure. Just paste and optimize.</p>
@@ -224,11 +224,11 @@ export default function LandingPage() {
           <div className="grid md:grid-cols-3 gap-8">
             {[
               { n:"01", title:"Paste Your Query", desc:"Drop any SQL query into the editor. The live scanner immediately highlights anti-patterns as you type — zero latency." },
-              { n:"02", title:"Click Optimize", desc:"Claude AI analyzes your query, identifies all issues, and generates an optimized version with index recommendations." },
+              { n:"02", title:"Click Optimize", desc:"Our AI analyzes your query, identifies all issues, and generates an optimized version with index recommendations." },
               { n:"03", title:"Review & Export", desc:"Compare before/after in split view. Copy the optimized SQL or export as a file. History saved automatically to Neon." },
             ].map((step,i)=>(
               <motion.div key={step.n}
-                initial={{opacity:0,x:-20}} whileInView={{opacity:1,x:0}} viewport={{once:true}}
+                initial={{opacity:0,x:-20}} animate={{opacity:1,x:0}}
                 transition={{delay:i*.15}}
                 className="relative">
                 <div className="text-7xl font-black text-violet-500/10 absolute -top-4 -left-2 font-mono">{step.n}</div>
@@ -247,10 +247,10 @@ export default function LandingPage() {
 
       {/* ── CTA ── */}
       <section className="relative z-10 py-24 px-6">
-        <motion.div initial={{opacity:0,scale:.95}} whileInView={{opacity:1,scale:1}} viewport={{once:true}}
+        <motion.div initial={{opacity:0,scale:.95}} animate={{opacity:1,scale:1}}
           className="max-w-3xl mx-auto text-center">
-          <div className="animated-border rounded-3xl p-12">
-            <div className="w-16 h-16 rounded-2xl bg-violet-500/20 border border-violet-500/40 flex items-center justify-center mx-auto mb-6">
+          <div className="animated-border rounded-3xl p-12 border border-violet-500/25 glow-violet">
+            <div className="w-16 h-16 rounded-2xl bg-violet-500/20 border border-violet-500/40 flex items-center justify-center mx-auto mb-6 animate-float">
               <Zap className="w-8 h-8 text-violet-400"/>
             </div>
             <h2 className="text-4xl font-black mb-4">Start Optimizing Today</h2>
@@ -275,7 +275,7 @@ export default function LandingPage() {
             </div>
             <span className="text-sm font-bold">SmartQuery <span className="text-violet-400">Pro</span></span>
           </div>
-          <p className="text-xs text-slate-500">Built with Next.js 14 · Neon PostgreSQL · Claude AI · Vercel</p>
+          <p className="text-xs text-slate-500">Built with Next.js 14 · Neon PostgreSQL · Advanced AI · Vercel</p>
           <Link href="/register" className="text-xs text-violet-400 hover:text-violet-300 font-medium">Get started free →</Link>
         </div>
       </footer>
