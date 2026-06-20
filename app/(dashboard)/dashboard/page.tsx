@@ -136,7 +136,7 @@ export default function DashboardPage() {
         ) : (
           <div className="text-center py-10">
             <div className="text-3xl mb-3">⚡</div>
-            <p className="text-sm text-slate-400 mb-4">No optimizations yet — let's fix your first query!</p>
+            <p className="text-sm text-slate-400 mb-4">No optimizations yet — let&apos;s fix your first query!</p>
             <Link href="/optimizer" className="inline-flex items-center gap-2 px-4 py-2 bg-violet-500/15 border border-violet-500/30 text-violet-300 text-xs font-medium rounded-lg">
               <Zap className="w-3.5 h-3.5"/>Optimize Your First Query
             </Link>
