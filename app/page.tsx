@@ -40,12 +40,12 @@ const FEATURES = [
   { icon:<BarChart3 className="w-5 h-5"/>, title:"Real-Time Analytics", desc:"Track performance gains, issue types, and optimization streaks. Recharts dashboards update with every query.", color:"pink" },
   { icon:<Database className="w-5 h-5"/>, title:"Neon PostgreSQL Storage", desc:"Every optimization saved permanently. Filter by domain, search by content, export as SQL or JSON.", color:"amber" },
   { icon:<Code2 className="w-5 h-5"/>, title:"SQL Syntax Highlighting", desc:"Token-based highlighting for keywords, functions, strings, and numbers. Before/after split-view comparison.", color:"blue" },
-  { icon:<Star className="w-5 h-5"/>, title:"36+ Domain Examples", desc:"Real queries from E-Commerce, Healthcare, Finance, HR, Analytics, Social, Real Estate, and Logistics.", color:"violet" },
+  { icon:<Star className="w-5 h-5"/>, title:"99 Domain Examples", desc:"Real flawed queries from E-Commerce, Healthcare, Banking, HR, SaaS, Social, Real Estate, Logistics, Education, Gaming, Marketing, and Travel.", color:"violet" },
 ];
 
 const STATS = [
   { value:"82%", label:"Avg Performance Gain", icon:<TrendingUp className="w-4 h-4"/> },
-  { value:"36+", label:"Domain Examples",       icon:<Database className="w-4 h-4"/> },
+  { value:"99",  label:"Domain Examples",       icon:<Database className="w-4 h-4"/> },
   { value:"10",  label:"Anti-Pattern Rules",    icon:<Shield className="w-4 h-4"/> },
   { value:"<2s", label:"Avg Optimization Time", icon:<Clock className="w-4 h-4"/> },
 ];
@@ -90,7 +90,7 @@ export default function LandingPage() {
             <div className="w-8 h-8 rounded-lg bg-violet-500/20 border border-violet-500/40 flex items-center justify-center">
               <Zap className="w-4 h-4 text-violet-400"/>
             </div>
-            <span className="font-bold text-sm">SmartQuery <span className="text-violet-400">Pro</span></span>
+            <span className="font-bold text-sm">Smart Query <span className="text-violet-400">Optimizer</span></span>
           </div>
           <div className="hidden md:flex items-center gap-6 text-sm text-slate-400">
             {[["Features","#features"],["Examples","#examples"],["How It Works","#how-it-works"],["FAQ","#faq"]].map(([label,href])=>(
@@ -217,9 +217,9 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto">
           <motion.div initial={{opacity:0,y:20}} animate={{opacity:1,y:0}}
             className="text-center mb-16">
-            <div className="text-xs text-violet-400 font-medium tracking-widest uppercase mb-4">36+ Real Queries</div>
-            <h2 className="text-4xl font-black mb-4">Across 8 Industry Domains</h2>
-            <p className="text-slate-400 max-w-xl mx-auto">E-Commerce, Healthcare, Finance, HR, Analytics, Social, Real Estate, and Logistics — every example is a real anti-pattern with a real fix.</p>
+            <div className="text-xs text-violet-400 font-medium tracking-widest uppercase mb-4">99 Real Queries</div>
+            <h2 className="text-4xl font-black mb-4">Across 12 Industry Domains</h2>
+            <p className="text-slate-400 max-w-xl mx-auto">E-Commerce, Healthcare, Banking, HR, SaaS, Social, Real Estate, Logistics, Education, Gaming, Marketing, and Travel — every example is a real anti-pattern with a real fix.</p>
           </motion.div>
 
           <div className="grid md:grid-cols-3 gap-5 mb-10">
@@ -245,7 +245,7 @@ export default function LandingPage() {
             className="text-center">
             <Link href="/register"
               className="inline-flex items-center gap-2 px-6 py-3 border border-violet-500/30 hover:border-violet-500/60 hover:bg-violet-500/10 text-slate-300 hover:text-white font-medium rounded-xl transition-all">
-              Sign up to explore all 36 examples <ArrowRight className="w-4 h-4"/>
+              Sign up to explore all 99 examples <ArrowRight className="w-4 h-4"/>
             </Link>
           </motion.div>
         </div>
@@ -342,7 +342,7 @@ export default function LandingPage() {
             <div className="w-7 h-7 rounded-lg bg-violet-500/20 border border-violet-500/40 flex items-center justify-center">
               <Zap className="w-3.5 h-3.5 text-violet-400"/>
             </div>
-            <span className="text-sm font-bold">SmartQuery <span className="text-violet-400">Pro</span></span>
+            <span className="text-sm font-bold">Smart Query <span className="text-violet-400">Optimizer</span></span>
           </div>
           <p className="text-xs text-slate-500">Built with Next.js 14 · Neon PostgreSQL · Advanced AI · Vercel</p>
           <Link href="/register" className="text-xs text-violet-400 hover:text-violet-300 font-medium">Get started free →</Link>

@@ -39,7 +39,7 @@ export default function HistoryPage() {
 
   const exportQuery = (id: string) => window.open(`/api/export?id=${id}&format=sql`, "_blank");
 
-  const domains = ["all", "E-Commerce","Healthcare","Finance","HR","Analytics","Social","Real Estate","Logistics","General"];
+  const domains = ["all", "E-Commerce","Healthcare","Finance","Banking","HR","Analytics","Social","Real Estate","Logistics","Education","Gaming","General"];
 
   return (
     <div className="p-6 lg:p-8 max-w-[1500px] mx-auto">

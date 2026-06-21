@@ -1,13 +1,13 @@
 // app/api/optimize/route.ts
 import { NextResponse } from "next/server";
 import { getAuth } from "@/lib/auth";
-import { optimizeSQL } from "@/lib/anthropic";
+import { optimizeSQL, AiParseError } from "@/lib/anthropic";
 import { db } from "@/lib/db";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
 
-const schema = z.object({ query: z.string().min(5).max(50000) });
+const schema = z.object({ query: z.string().min(3).max(50000) });
 
 export async function POST(req: Request) {
   try {
@@ -17,7 +17,14 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { query } = schema.parse(body);
+    const parsedBody = schema.safeParse(body);
+    if (!parsedBody.success) {
+      return NextResponse.json(
+        { error: "Paste at least 3 characters of SQL to optimize." },
+        { status: 400 }
+      );
+    }
+    const { query } = parsedBody.data;
 
     // Rate limiting: max 20 queries per hour
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
@@ -33,8 +40,43 @@ export async function POST(req: Request) {
 
     // Call AI optimization engine
     const start = Date.now();
-    const result = await optimizeSQL(query);
+    let result;
+    try {
+      result = await optimizeSQL(query);
+    } catch (aiErr) {
+      if (aiErr instanceof AiParseError) {
+        console.error("[OPTIMIZE] AI parse failure", aiErr);
+        return NextResponse.json(
+          { error: "The AI engine had trouble with that response — please try again in a moment." },
+          { status: 502 }
+        );
+      }
+      const msg = aiErr instanceof Error ? aiErr.message : "";
+      if (msg.toLowerCase().includes("api key") || msg.toLowerCase().includes("authentication")) {
+        return NextResponse.json(
+          { error: "AI engine is not configured correctly (invalid API key). Contact the site admin." },
+          { status: 500 }
+        );
+      }
+      if (msg.toLowerCase().includes("rate") || msg.toLowerCase().includes("overloaded") || msg.toLowerCase().includes("429")) {
+        return NextResponse.json(
+          { error: "The AI engine is busy right now — please try again in a few seconds." },
+          { status: 503 }
+        );
+      }
+      console.error("[OPTIMIZE] AI call failed", aiErr);
+      return NextResponse.json(
+        { error: "Couldn't reach the AI engine. Please try again." },
+        { status: 502 }
+      );
+    }
     const executionTimeMs = Date.now() - start;
+
+    // If the input wasn't actually SQL, don't persist it as a "query" —
+    // just hand the friendly explanation back to the UI.
+    if (!result.isValidSql) {
+      return NextResponse.json({ ...result, executionTimeMs, id: null });
+    }
 
     // Save to database
     const saved = await db.query.create({
@@ -64,6 +106,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: err.errors[0].message }, { status: 400 });
     }
     console.error("[OPTIMIZE]", err);
-    return NextResponse.json({ error: "Optimization failed. Please try again." }, { status: 500 });
+    return NextResponse.json(
+      { error: "Something went wrong saving your result. Please try again." },
+      { status: 500 }
+    );
   }
 }

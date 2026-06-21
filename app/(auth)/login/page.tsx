@@ -53,7 +53,7 @@ export default function LoginPage() {
             <div className="w-9 h-9 rounded-xl bg-violet-500/20 border border-violet-500/40 flex items-center justify-center">
               <Zap className="w-5 h-5 text-violet-400"/>
             </div>
-            <span className="font-bold">SmartQuery <span className="text-violet-400">Pro</span></span>
+            <span className="font-bold">Smart Query <span className="text-violet-400">Optimizer</span></span>
           </Link>
           <h1 className="text-2xl font-black mb-2">Welcome back</h1>
           <p className="text-slate-400 text-sm">Sign in to your account to continue optimizing</p>

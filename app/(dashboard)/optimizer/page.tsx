@@ -1,14 +1,17 @@
 "use client";
 // app/(dashboard)/optimizer/page.tsx
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, Suspense } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { SqlBlock } from "@/components/optimizer/SqlBlock";
 import { ScoreRing } from "@/components/optimizer/ScoreRing";
 import { SEVERITY_CONFIG } from "@/lib/utils";
+import { SQL_EXAMPLES } from "@/lib/examples-data";
 import { toast } from "sonner";
 import {
-  Zap, Loader2, AlertTriangle, CheckCircle2, Database, Download,
-  Copy, Sparkles, ChevronDown,
+  Zap, Loader2, AlertTriangle, CheckCircle2, Download,
+  Copy, Sparkles, BookOpen, HelpCircle,
 } from "lucide-react";
 
 // ── Live anti-pattern scanner (instant, no API)
@@ -27,7 +30,8 @@ function useLiveScanner(sql: string) {
 }
 
 interface OptimizeResult {
-  id?: string;
+  id?: string | null;
+  isValidSql: boolean;
   optimizedQuery: string;
   issues: Array<{ type: string; severity: string; description: string }>;
   improvements: string[];
@@ -42,12 +46,33 @@ interface OptimizeResult {
   originalQuery?: string;
 }
 
-export default function OptimizerPage() {
+function OptimizerContent() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const [query, setQuery] = useState("");
   const [result, setResult] = useState<OptimizeResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [view, setView] = useState<"split"|"before"|"after">("split");
   const scanHits = useLiveScanner(query);
+
+  // Prefill from an Examples-library deep link: /optimizer?example=ex001
+  useEffect(() => {
+    const exampleId = searchParams.get("example");
+    if (!exampleId) return;
+    const ex = SQL_EXAMPLES.find((e) => e.id === exampleId);
+    if (ex) {
+      setQuery(ex.sql);
+      setResult(null);
+      toast.message(`Loaded: ${ex.issueTag} (${ex.domain})`);
+    }
+    router.replace("/optimizer");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
+  const randomExamples = useMemo(
+    () => [...SQL_EXAMPLES].sort(() => Math.random() - 0.5).slice(0, 3),
+    []
+  );
 
   const optimize = useCallback(async () => {
     if (!query.trim()) { toast.warning("Paste a SQL query first"); return; }
@@ -58,11 +83,15 @@ export default function OptimizerPage() {
         body: JSON.stringify({ query }),
       });
       const data = await res.json();
-      if (!res.ok) { toast.error(data.error ?? "Optimization failed"); return; }
+      if (!res.ok) { toast.error(data.error ?? "Optimization failed — please try again"); return; }
       setResult({ ...data, originalQuery: query });
-      toast.success(`⚡ +${data.performanceGain}% estimated performance gain`);
+      if (data.isValidSql === false) {
+        toast.warning("That doesn't look like a SQL query");
+      } else {
+        toast.success(`⚡ +${data.performanceGain}% estimated performance gain`);
+      }
     } catch {
-      toast.error("Network error — please try again");
+      toast.error("Network error — please check your connection and try again");
     } finally { setLoading(false); }
   }, [query]);
 
@@ -153,7 +182,45 @@ export default function OptimizerPage() {
                 <div className="text-lg font-bold mb-2">Ready to Optimize</div>
                 <p className="text-sm text-slate-400 max-w-xs">Paste a SQL query and click <b className="text-violet-300">Optimize with AI</b> to see the magic happen.</p>
               </div>
+              <div className="w-full max-w-sm pt-2">
+                <div className="text-[10px] text-slate-500 tracking-wider mb-2">OR TRY A REAL EXAMPLE</div>
+                <div className="space-y-1.5">
+                  {randomExamples.map((ex) => (
+                    <button key={ex.id} onClick={() => { setQuery(ex.sql); toast.message(`Loaded: ${ex.issueTag}`); }}
+                      className="w-full flex items-center justify-between gap-2 px-3 py-2 bg-violet-500/8 hover:bg-violet-500/14 border border-violet-500/15 rounded-lg text-left transition-colors">
+                      <span className="text-[11px] text-slate-300 truncate">{ex.issueTag} <span className="text-slate-500">· {ex.domain}</span></span>
+                      <Zap className="w-3 h-3 text-violet-400 flex-shrink-0"/>
+                    </button>
+                  ))}
+                </div>
+                <Link href="/examples" className="inline-flex items-center gap-1.5 text-[11px] text-violet-400 hover:text-violet-300 mt-3 transition-colors">
+                  <BookOpen className="w-3.5 h-3.5"/> Browse all {SQL_EXAMPLES.length} examples
+                </Link>
+              </div>
             </div>
+          ) : result.isValidSql === false ? (
+            <motion.div initial={{opacity:0,y:10}} animate={{opacity:1,y:0}}
+              className="glass-card rounded-2xl p-10 flex flex-col items-center justify-center text-center min-h-[480px] gap-4 border-amber-500/25">
+              <div className="w-16 h-16 rounded-full bg-amber-500/15 border border-amber-500/30 flex items-center justify-center">
+                <HelpCircle className="w-7 h-7 text-amber-400"/>
+              </div>
+              <div>
+                <div className="text-lg font-bold mb-2">That doesn&apos;t look like SQL</div>
+                <p className="text-sm text-slate-400 max-w-sm">{result.explanation || "Paste a real SQL query — something like a SELECT, INSERT, UPDATE, or DELETE statement — and I'll analyze it."}</p>
+              </div>
+              <div className="w-full max-w-sm pt-2">
+                <div className="text-[10px] text-slate-500 tracking-wider mb-2">TRY ONE OF THESE INSTEAD</div>
+                <div className="space-y-1.5">
+                  {randomExamples.map((ex) => (
+                    <button key={ex.id} onClick={() => { setQuery(ex.sql); setResult(null); toast.message(`Loaded: ${ex.issueTag}`); }}
+                      className="w-full flex items-center justify-between gap-2 px-3 py-2 bg-violet-500/8 hover:bg-violet-500/14 border border-violet-500/15 rounded-lg text-left transition-colors">
+                      <span className="text-[11px] text-slate-300 truncate">{ex.issueTag} <span className="text-slate-500">· {ex.domain}</span></span>
+                      <Zap className="w-3 h-3 text-violet-400 flex-shrink-0"/>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </motion.div>
           ) : (
             <motion.div initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} className="space-y-4">
               {/* Score + summary */}
@@ -254,5 +321,13 @@ export default function OptimizerPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function OptimizerPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-sm text-slate-500">Loading optimizer…</div>}>
+      <OptimizerContent />
+    </Suspense>
   );
 }

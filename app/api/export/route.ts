@@ -49,7 +49,7 @@ export async function GET(req: Request) {
     const indexRecs = Array.isArray(query.indexRecs) ? query.indexRecs as string[] : [];
 
     const sql = [
-      `-- SmartQuery Pro Export`,
+      `-- Smart Query Optimizer Export`,
       `-- Title: ${query.title}`,
       `-- Domain: ${query.domain}`,
       `-- Performance Gain: +${query.performanceGain}%`,

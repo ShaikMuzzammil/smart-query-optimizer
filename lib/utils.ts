@@ -53,10 +53,13 @@ export const DOMAIN_CONFIG: Record<string, { icon: string; color: string }> = {
   "E-Commerce":  { icon: "🛒", color: "#f72585" },
   "Healthcare":  { icon: "🏥", color: "#06d6a0" },
   "Finance":     { icon: "💹", color: "#fbbf24" },
+  "Banking":     { icon: "🏦", color: "#fbbf24" },
   "HR":          { icon: "👥", color: "#38bdf8" },
   "Analytics":   { icon: "📊", color: "#a78bfa" },
   "Social":      { icon: "💬", color: "#f97316" },
   "Real Estate": { icon: "🏠", color: "#10b981" },
   "Logistics":   { icon: "🚚", color: "#8b5cf6" },
+  "Education":   { icon: "🎓", color: "#22d3ee" },
+  "Gaming":      { icon: "🎮", color: "#ec4899" },
   "General":     { icon: "⚡", color: "#7c3aed" },
 };

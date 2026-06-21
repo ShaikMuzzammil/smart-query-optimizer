@@ -5,12 +5,13 @@ import { usePathname } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import { motion } from "framer-motion";
 import {
-  LayoutDashboard, Zap, History, BarChart3, Settings, LogOut, Sparkles,
+  LayoutDashboard, Zap, History, BarChart3, Settings, LogOut, Sparkles, BookOpen,
 } from "lucide-react";
 
 const NAV = [
   { href: "/dashboard",  icon: LayoutDashboard, label: "Dashboard" },
   { href: "/optimizer",  icon: Zap,             label: "Optimizer" },
+  { href: "/examples",   icon: BookOpen,        label: "Examples" },
   { href: "/history",    icon: History,         label: "History" },
   { href: "/analytics",  icon: BarChart3,       label: "Analytics" },
   { href: "/settings",   icon: Settings,        label: "Settings" },
@@ -28,8 +29,7 @@ export function Sidebar() {
           <Zap className="w-4 h-4 text-violet-400"/>
         </div>
         <div>
-          <div className="text-sm font-bold leading-tight">SmartQuery <span className="text-violet-400">Pro</span></div>
-          <div className="text-[9px] text-slate-500 tracking-wider">GODMODE</div>
+          <div className="text-sm font-bold leading-tight">Smart Query <span className="text-violet-400">Optimizer</span></div>
         </div>
       </div>
 

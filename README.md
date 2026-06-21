@@ -1,8 +1,8 @@
-# ⚡ SmartQuery Pro — GODMODE
+# ⚡ Smart Query Optimizer
 
 ![Next.js](https://img.shields.io/badge/Next.js-14-black?logo=next.js) ![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue?logo=typescript) ![Neon](https://img.shields.io/badge/Neon-PostgreSQL-00E599?logo=postgresql&logoColor=white) ![Vercel](https://img.shields.io/badge/Deploy-Vercel-black?logo=vercel) ![License](https://img.shields.io/badge/License-MIT-violet)
 
-AI-powered SQL query optimizer. Real-time anti-pattern detection, AI-driven rewrites, Neon PostgreSQL persistence, full auth, analytics dashboards, and a 36-example domain library — built as a full-stack production app.
+AI-powered SQL query optimizer. Real-time anti-pattern detection, AI-driven rewrites, Neon PostgreSQL persistence, full auth, analytics dashboards, and a 99-example domain library — built as a full-stack production app.
 
 **Stack:** Next.js 14 (App Router) · TypeScript · Tailwind CSS · Framer Motion · NextAuth.js · Prisma + Neon PostgreSQL (serverless driver) · Anthropic AI SDK · Recharts · Vercel
 
@@ -12,7 +12,7 @@ AI-powered SQL query optimizer. Real-time anti-pattern detection, AI-driven rewr
 
 You do **not** need Node.js, npm, or to run a single command on your computer to get this live. Vercel builds and installs everything for you.
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/YOUR-USERNAME/YOUR-REPO&env=DATABASE_URL,DIRECT_URL,NEXTAUTH_SECRET,NEXTAUTH_URL,ANTHROPIC_API_KEY&envDescription=See%20the%20Environment%20Variables%20section%20below%20for%20how%20to%20get%20each%20value&project-name=smartquery-pro&repository-name=smartquery-pro)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/YOUR-USERNAME/YOUR-REPO&env=DATABASE_URL,DIRECT_URL,NEXTAUTH_SECRET,NEXTAUTH_URL,ANTHROPIC_API_KEY&envDescription=See%20the%20Environment%20Variables%20section%20below%20for%20how%20to%20get%20each%20value&project-name=smart-query-optimizer&repository-name=smart-query-optimizer)
 
 1. Push this folder to a new GitHub repository (GitHub's web UI lets you drag-and-drop the unzipped folder to upload — no local `git` needed either, via [github.com/new](https://github.com/new) → "uploading an existing file").
 2. Click the button above (after replacing `YOUR-USERNAME/YOUR-REPO` with your repo path), or just go to [vercel.com/new](https://vercel.com/new) and import your repo manually.
@@ -24,14 +24,14 @@ You do **not** need Node.js, npm, or to run a single command on your computer to
 
 ## ✨ Features
 
-- **Real AI optimization** — every query is analyzed live by Claude Sonnet, not pre-canned.
-- **Live anti-pattern scanner** — 10 regex rules flag N+1 subqueries, leading wildcards, implicit joins, etc. instantly in the editor, with zero API calls.
+- **Real AI optimization** — every query is analyzed live by Claude Sonnet, not pre-canned. Hardened response parsing means malformed AI output or non-SQL input never produces a dead-end "optimization failed" error — invalid input now gets a specific, friendly explanation with example queries to try instead.
+- **Live anti-pattern scanner** — 10 regex rules flag N+1 subqueries, leading wildcards, implicit joins, etc. instantly in the editor as you type, with zero API calls.
+- **99-example library** — real, intentionally-flawed SQL queries across 12 domains (E-Commerce, Healthcare, Banking & Finance, HR & Payroll, SaaS Analytics, Social Media, Real Estate, Logistics & Shipping, Education, Gaming, Marketing, Travel & Hospitality), filterable by domain/difficulty/search, with one click to load any example straight into the Optimizer.
 - **Full auth** — email/password via NextAuth credentials provider, bcrypt-hashed, JWT sessions.
 - **Persistent history** — every optimization saved to Neon Postgres: issues, improvements, index recs, complexity before/after, full original + optimized SQL.
 - **Analytics dashboard** — Recharts bar/radar charts, daily trend (raw SQL `jsonb_array_elements` aggregation), streak tracking, domain breakdown.
 - **Export** — download any optimization as annotated `.sql` or structured `.json`.
 - **Rate limiting** — 20 optimizations/hour/user, enforced server-side against the DB.
-- **36-example library** — real anti-pattern queries across 8 domains (E-Commerce, Healthcare, Finance, HR, Analytics, Social, Real Estate, Logistics).
 - **Self-healing schema** — `prisma db push` runs automatically as part of every Vercel build, so the database is always in sync with the code with zero manual steps.
 - **Built-in diagnostics** — `/api/health` checks every env var and does a live database query + table-existence check, so you can self-diagnose any deployment issue in one request.
 
@@ -41,7 +41,7 @@ You do **not** need Node.js, npm, or to run a single command on your computer to
 
 ```bash
 git clone https://github.com/<your-username>/<your-repo>.git
-cd smartquery-pro
+cd smart-query-optimizer
 npm install
 cp .env.example .env.local
 ```
@@ -104,7 +104,7 @@ Copy the output into `NEXTAUTH_SECRET`.
 git init
 git add .
 git status              # confirm no .env / .env.local listed — should be ignored
-git commit -m "Initial commit: SmartQuery Pro GODMODE"
+git commit -m "Initial commit: Smart Query Optimizer"
 git branch -M main
 git remote add origin https://github.com/<your-username>/<your-repo>.git
 git push -u origin main
@@ -168,6 +168,7 @@ app/
   (dashboard)/                   — protected app shell
     dashboard/                   — overview + stats
     optimizer/                   — main AI optimizer tool
+    examples/                    — 99-query example library (filter, search, load-into-optimizer)
     history/                     — saved optimizations
     analytics/                   — Recharts dashboards
     settings/                    — account settings
@@ -185,7 +186,8 @@ components/
 lib/
   db.ts                          — Prisma + Neon serverless adapter
   auth.ts                        — NextAuth config
-  anthropic.ts                   — Claude AI client + prompt
+  anthropic.ts                   — Claude AI client + prompt + response parser
+  examples-data.ts               — 99 example queries across 12 domains
   utils.ts                       — shared helpers, design tokens
 prisma/
   schema.prisma                  — User, Query, Account, Session models
@@ -220,8 +222,11 @@ prisma/
 **Favicon/tab icon not showing or showing a generic placeholder**
 → Browsers cache favicons aggressively per-origin. After deploying, hard-refresh (Ctrl/Cmd+Shift+R) or open in an incognito window to see the updated icon immediately.
 
+**"Optimization failed. Please try again." on a valid query**
+→ Fixed. The previous version had two gaps: the AI response parser had no fallback if the model wrapped its JSON in any extra text, and there was no specific handling for input that isn't actually SQL. Both are now handled: malformed AI responses get one automatic retry with a stricter prompt before failing, and non-SQL input (gibberish, a stray word, a question) now returns a friendly "that doesn't look like SQL" explanation with example queries to try, instead of a generic error. If you still see this message, it means the AI engine genuinely couldn't be reached twice in a row — check `ANTHROPIC_API_KEY` is set correctly and visit `/api/health`.
+
 ---
 
 ## License
 
-MIT — built with SmartQuery Pro GODMODE.
+MIT — built with Smart Query Optimizer.
