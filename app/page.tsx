@@ -93,7 +93,7 @@ export default function LandingPage() {
             <span className="font-bold text-sm">SmartQuery <span className="text-violet-400">Pro</span></span>
           </div>
           <div className="hidden md:flex items-center gap-6 text-sm text-slate-400">
-            {[["Features","#features"],["How It Works","#how-it-works"]].map(([label,href])=>(
+            {[["Features","#features"],["Examples","#examples"],["How It Works","#how-it-works"],["FAQ","#faq"]].map(([label,href])=>(
               <a key={label} href={href} className="hover:text-white transition-colors">{label}</a>
             ))}
           </div>
@@ -212,6 +212,45 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* ── EXAMPLES ── */}
+      <section id="examples" className="relative z-10 py-24 px-6 border-t border-violet-500/10 scroll-mt-20">
+        <div className="max-w-7xl mx-auto">
+          <motion.div initial={{opacity:0,y:20}} animate={{opacity:1,y:0}}
+            className="text-center mb-16">
+            <div className="text-xs text-violet-400 font-medium tracking-widest uppercase mb-4">36+ Real Queries</div>
+            <h2 className="text-4xl font-black mb-4">Across 8 Industry Domains</h2>
+            <p className="text-slate-400 max-w-xl mx-auto">E-Commerce, Healthcare, Finance, HR, Analytics, Social, Real Estate, and Logistics — every example is a real anti-pattern with a real fix.</p>
+          </motion.div>
+
+          <div className="grid md:grid-cols-3 gap-5 mb-10">
+            {[
+              { domain:"E-Commerce", icon:"🛒", title:"Top Products by Revenue", issue:"Correlated subquery runs once per row", gain:82 },
+              { domain:"Healthcare", icon:"🏥", title:"30-Day Readmission Rate", issue:"O(n²) nested correlated subqueries", gain:89 },
+              { domain:"Finance",    icon:"💹", title:"Portfolio Daily Returns", issue:"4 nested subqueries per row", gain:94 },
+            ].map((ex,i)=>(
+              <motion.div key={ex.title}
+                initial={{opacity:0,y:20}} animate={{opacity:1,y:0}} transition={{delay:i*.1}}
+                className="glass-card glass-card-hover rounded-2xl p-5">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-semibold text-violet-400 flex items-center gap-1.5">{ex.icon} {ex.domain}</span>
+                  <span className="text-lg font-black text-emerald-400 font-mono">+{ex.gain}%</span>
+                </div>
+                <h3 className="font-bold text-sm mb-2">{ex.title}</h3>
+                <p className="text-xs text-slate-500 leading-relaxed">⚠ {ex.issue}</p>
+              </motion.div>
+            ))}
+          </div>
+
+          <motion.div initial={{opacity:0,y:20}} animate={{opacity:1,y:0}} transition={{delay:.3}}
+            className="text-center">
+            <Link href="/register"
+              className="inline-flex items-center gap-2 px-6 py-3 border border-violet-500/30 hover:border-violet-500/60 hover:bg-violet-500/10 text-slate-300 hover:text-white font-medium rounded-xl transition-all">
+              Sign up to explore all 36 examples <ArrowRight className="w-4 h-4"/>
+            </Link>
+          </motion.div>
+        </div>
+      </section>
+
       {/* ── HOW IT WORKS ── */}
       <section id="how-it-works" className="relative z-10 py-24 px-6 border-t border-violet-500/10 scroll-mt-20">
         <div className="max-w-5xl mx-auto">
@@ -239,6 +278,36 @@ export default function LandingPage() {
                   <h3 className="font-bold mb-2">{step.title}</h3>
                   <p className="text-slate-400 text-sm leading-relaxed">{step.desc}</p>
                 </div>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── FAQ ── */}
+      <section id="faq" className="relative z-10 py-24 px-6 border-t border-violet-500/10 scroll-mt-20">
+        <div className="max-w-3xl mx-auto">
+          <motion.div initial={{opacity:0,y:20}} animate={{opacity:1,y:0}}
+            className="text-center mb-14">
+            <h2 className="text-4xl font-black mb-4">Frequently Asked Questions</h2>
+            <p className="text-slate-400">Everything you need to know before getting started.</p>
+          </motion.div>
+
+          <div className="space-y-4">
+            {[
+              { q:"Is it really free?", a:"Yes — 20 optimizations per hour, no credit card, no trial period. Create an account and start immediately." },
+              { q:"What SQL dialects are supported?", a:"The optimizer works with standard SQL and is tuned for PostgreSQL-specific syntax (window functions, CTEs, FILTER clauses), but handles MySQL and general ANSI SQL queries equally well." },
+              { q:"Is my query data stored or shared?", a:"Every optimization is saved privately to your account in Neon PostgreSQL so you can revisit your history — it's never shared with other users or used to train anything." },
+              { q:"Do I need to know SQL internals to use this?", a:"No. Paste any query and the live scanner explains each issue in plain language, with the AI-optimized rewrite and an explanation of exactly what changed and why." },
+              { q:"Can I export my optimized queries?", a:"Yes — every saved query can be exported as an annotated .sql file or structured .json from your history page." },
+            ].map((item,i)=>(
+              <motion.div key={item.q}
+                initial={{opacity:0,y:15}} animate={{opacity:1,y:0}} transition={{delay:i*.06}}
+                className="glass-card rounded-xl p-5">
+                <h3 className="font-bold text-sm mb-2 flex items-center gap-2">
+                  <span className="text-violet-400">Q.</span> {item.q}
+                </h3>
+                <p className="text-slate-400 text-sm leading-relaxed pl-5">{item.a}</p>
               </motion.div>
             ))}
           </div>

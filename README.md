@@ -1,14 +1,30 @@
 # ⚡ SmartQuery Pro — GODMODE
 
-AI-powered SQL query optimizer. Real-time anti-pattern detection, Claude AI rewrites, Neon PostgreSQL persistence, full auth, analytics dashboards, and a 36-example domain library — built as a full-stack production app.
+![Next.js](https://img.shields.io/badge/Next.js-14-black?logo=next.js) ![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue?logo=typescript) ![Neon](https://img.shields.io/badge/Neon-PostgreSQL-00E599?logo=postgresql&logoColor=white) ![Vercel](https://img.shields.io/badge/Deploy-Vercel-black?logo=vercel) ![License](https://img.shields.io/badge/License-MIT-violet)
 
-**Stack:** Next.js 14 (App Router) · TypeScript · Tailwind CSS · Framer Motion · NextAuth.js · Prisma + Neon PostgreSQL (serverless driver) · Claude AI (Anthropic SDK) · Recharts · Vercel
+AI-powered SQL query optimizer. Real-time anti-pattern detection, AI-driven rewrites, Neon PostgreSQL persistence, full auth, analytics dashboards, and a 36-example domain library — built as a full-stack production app.
+
+**Stack:** Next.js 14 (App Router) · TypeScript · Tailwind CSS · Framer Motion · NextAuth.js · Prisma + Neon PostgreSQL (serverless driver) · Anthropic AI SDK · Recharts · Vercel
+
+---
+
+## 🚀 Deploy in 2 Minutes — Zero Local Setup Required
+
+You do **not** need Node.js, npm, or to run a single command on your computer to get this live. Vercel builds and installs everything for you.
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/YOUR-USERNAME/YOUR-REPO&env=DATABASE_URL,DIRECT_URL,NEXTAUTH_SECRET,NEXTAUTH_URL,ANTHROPIC_API_KEY&envDescription=See%20the%20Environment%20Variables%20section%20below%20for%20how%20to%20get%20each%20value&project-name=smartquery-pro&repository-name=smartquery-pro)
+
+1. Push this folder to a new GitHub repository (GitHub's web UI lets you drag-and-drop the unzipped folder to upload — no local `git` needed either, via [github.com/new](https://github.com/new) → "uploading an existing file").
+2. Click the button above (after replacing `YOUR-USERNAME/YOUR-REPO` with your repo path), or just go to [vercel.com/new](https://vercel.com/new) and import your repo manually.
+3. Paste in the 5 environment variable values (get them in 2 minutes — see [§3](#3--environment-variables) below).
+4. Click **Deploy**. That's it — **the database tables are created automatically on every build** (see `vercel.json`), so there is no separate migration step to run, ever.
+5. Visit `https://your-app.vercel.app/api/health` to confirm everything connected correctly.
 
 ---
 
 ## ✨ Features
 
-- **Real AI optimization** — every query is sent to Claude (`claude-sonnet-4-6`) and analyzed live, not pre-canned.
+- **Real AI optimization** — every query is analyzed live by Claude Sonnet, not pre-canned.
 - **Live anti-pattern scanner** — 10 regex rules flag N+1 subqueries, leading wildcards, implicit joins, etc. instantly in the editor, with zero API calls.
 - **Full auth** — email/password via NextAuth credentials provider, bcrypt-hashed, JWT sessions.
 - **Persistent history** — every optimization saved to Neon Postgres: issues, improvements, index recs, complexity before/after, full original + optimized SQL.
@@ -16,10 +32,12 @@ AI-powered SQL query optimizer. Real-time anti-pattern detection, Claude AI rewr
 - **Export** — download any optimization as annotated `.sql` or structured `.json`.
 - **Rate limiting** — 20 optimizations/hour/user, enforced server-side against the DB.
 - **36-example library** — real anti-pattern queries across 8 domains (E-Commerce, Healthcare, Finance, HR, Analytics, Social, Real Estate, Logistics).
+- **Self-healing schema** — `prisma db push` runs automatically as part of every Vercel build, so the database is always in sync with the code with zero manual steps.
+- **Built-in diagnostics** — `/api/health` checks every env var and does a live database query + table-existence check, so you can self-diagnose any deployment issue in one request.
 
 ---
 
-## 1 · Local Setup
+## 1 · Local Setup (optional — only if you want to run it on your own machine)
 
 ```bash
 git clone https://github.com/<your-username>/<your-repo>.git
@@ -31,9 +49,14 @@ cp .env.example .env.local
 Fill in `.env.local` (see [Environment Variables](#3--environment-variables) below), then:
 
 ```bash
-npx prisma generate
-npx prisma db push        # creates tables in Neon
 npm run dev
+```
+
+The dev server doesn't run `prisma db push` automatically (only the production build does, via `vercel.json`/`package.json`'s `build` script). For local dev against your Neon database, run once:
+
+```bash
+npx prisma generate
+npx prisma db push
 ```
 
 Visit `http://localhost:3000`.
@@ -105,7 +128,7 @@ git ls-files | grep -i env
 ### Build settings (already configured via `vercel.json`)
 | Setting | Value |
 |---|---|
-| Build Command | `prisma generate && next build` |
+| Build Command | `prisma generate && prisma db push --accept-data-loss --skip-generate && next build` |
 | Install Command | `npm install` |
 | Output Directory | `.next` (default) |
 | Node Version | 20.x (set in Vercel Project Settings → General if needed) |
@@ -117,12 +140,10 @@ Vercel only assigns your `.vercel.app` domain **after** the first deploy:
 3. Project Settings → Environment Variables → update `NEXTAUTH_URL` to the real URL.
 4. Deployments → latest → **⋯** → **Redeploy** (env var changes require a redeploy to take effect).
 
-### Push your Neon schema
-After your first successful deploy (or before, doesn't matter — Neon is independent of Vercel):
-```bash
-npx prisma db push
-```
-Run this from your local machine with the same `DATABASE_URL`/`DIRECT_URL` as production, since Vercel's build step only runs `prisma generate` (schema sync), not `db push`.
+### Database schema — fully automatic, no manual step
+Every build runs `prisma db push` against your Neon database before `next build` — the `users`, `queries`, `accounts`, and `sessions` tables are created (or updated) automatically on every deploy. You never need to run a migration command yourself, locally or otherwise.
+
+> **Note for later, once you have real production data:** `db push --accept-data-loss` is ideal for getting started fast, but it can silently drop a column if you remove a field from `schema.prisma` after the app has real user data. When that matters to you, switch to Prisma's proper migration workflow (`prisma migrate dev` locally to generate a migration file, commit it, then `prisma migrate deploy` in the build command instead of `db push`) for safe, reviewable schema changes.
 
 ---
 
@@ -173,6 +194,9 @@ prisma/
 ---
 
 ## 8 · Troubleshooting
+
+**Registration fails with "Database tables aren't set up yet"**
+→ Tables are created automatically by `prisma db push` as part of every build (see `vercel.json`). If you're seeing this, your deployment is running an older build that predates this automation. Fix: Vercel dashboard → Deployments → latest → **⋯** → **Redeploy**. Then check `/api/health` — `database_schema` should show `ok: true`. If it's still failing after a fresh redeploy, the one manual fallback is running `npx prisma db push` once from a machine with Node.js installed, pointed at your Neon `DATABASE_URL`.
 
 **Build fails with "Failed to collect page data for /api/..." or "@prisma/client did not initialize yet"**
 → This is Next.js evaluating your API routes at build time, which triggers Prisma Client setup. Two causes, both already fixed in this codebase:

@@ -39,7 +39,7 @@ export async function GET() {
     checks.database_schema = {
       ok: false,
       detail: msg.includes("does not exist") || msg.includes("relation")
-        ? "Tables not found — run `npx prisma db push` locally against this DATABASE_URL to create them."
+        ? "Tables not found. This should be automatic (prisma db push runs on every build) — trigger a fresh deploy from the Vercel dashboard (Deployments → ⋯ → Redeploy) to pick that up, or run `npx prisma db push` locally against this DATABASE_URL as a one-time fix."
         : `FAILED: ${msg.slice(0, 250)}`,
     };
   }

@@ -48,7 +48,7 @@ export async function POST(req: Request) {
     // was never pushed, so the `users` table is missing.
     if (message.includes("does not exist") || message.toLowerCase().includes("relation")) {
       return NextResponse.json(
-        { error: "Database tables aren't set up yet. Run `npx prisma db push` against your Neon database, then try again. Visit /api/health for full diagnostics." },
+        { error: "Database tables aren't set up yet. This is normally automatic on deploy — try redeploying from the Vercel dashboard (Deployments → ⋯ → Redeploy). Visit /api/health for full diagnostics." },
         { status: 503 }
       );
     }
