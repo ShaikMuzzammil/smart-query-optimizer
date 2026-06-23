@@ -8,12 +8,26 @@ export async function GET() {
   const checks: Record<string, { ok: boolean; detail: string }> = {};
 
   // 1. Required env vars present?
-  const required = ["DATABASE_URL", "DIRECT_URL", "NEXTAUTH_SECRET", "NEXTAUTH_URL", "ANTHROPIC_API_KEY"];
+  const required = ["DATABASE_URL", "DIRECT_URL", "NEXTAUTH_SECRET", "NEXTAUTH_URL"];
   for (const key of required) {
     checks[key] = process.env[key]
       ? { ok: true, detail: "set" }
       : { ok: false, detail: "MISSING — add this in Vercel → Settings → Environment Variables" };
   }
+
+  // 1b. At least one AI provider must be configured — neither is individually
+  // "required" since either alone is enough to power the optimizer.
+  const hasClaude = !!process.env.ANTHROPIC_API_KEY;
+  const hasGemini = !!process.env.GEMINI_API_KEY;
+  checks.ANTHROPIC_API_KEY = hasClaude
+    ? { ok: true, detail: "set (primary AI engine)" }
+    : { ok: false, detail: "not set — optional only if GEMINI_API_KEY is set" };
+  checks.GEMINI_API_KEY = hasGemini
+    ? { ok: true, detail: "set (automatic fallback engine)" }
+    : { ok: false, detail: "not set — optional only if ANTHROPIC_API_KEY is set" };
+  checks.ai_provider = (hasClaude || hasGemini)
+    ? { ok: true, detail: hasClaude && hasGemini ? "Claude primary + Gemini fallback active" : hasClaude ? "Claude only (set GEMINI_API_KEY for automatic failover)" : "Gemini only (set ANTHROPIC_API_KEY to use Claude as primary)" }
+    : { ok: false, detail: "MISSING — set at least one of ANTHROPIC_API_KEY or GEMINI_API_KEY for the optimizer to work" };
 
   // 2. Raw database connectivity
   try {

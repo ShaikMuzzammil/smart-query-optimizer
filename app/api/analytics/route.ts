@@ -12,7 +12,7 @@ export async function GET() {
     const userId = session.user.id;
 
     const [
-      totalQueries, avgGain, domainBreakdown, recentTrend, topGains, issueTypes,
+      totalQueries, avgGain, domainBreakdown, recentTrend, topGains, issueTypes, engineBreakdown, avgCost,
     ] = await Promise.all([
       // Total query count
       db.query.count({ where: { userId } }),
@@ -60,6 +60,16 @@ export async function GET() {
         GROUP BY issue->>'severity'
         ORDER BY count DESC
       `,
+
+      // Which AI engine handled each optimization (Claude primary vs Gemini fallback)
+      db.query.groupBy({
+        by: ["engine"],
+        where: { userId },
+        _count: { _all: true },
+      }),
+
+      // Average estimated query cost score
+      db.query.aggregate({ where: { userId, costScore: { not: null } }, _avg: { costScore: true } }),
     ]);
 
     // Streak calculation
@@ -96,6 +106,8 @@ export async function GET() {
       })),
       topGains,
       issueTypes: issueTypes.map((i: any) => ({ severity: i.severity, count: Number(i.count) })),
+      engineBreakdown: engineBreakdown.map((e: any) => ({ engine: e.engine ?? "claude", count: e._count._all })),
+      avgCostScore: avgCost._avg.costScore != null ? Math.round(avgCost._avg.costScore) : null,
     });
   } catch (err) {
     console.error("[ANALYTICS]", err);

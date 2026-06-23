@@ -12,7 +12,7 @@ AI-powered SQL query optimizer. Real-time anti-pattern detection, AI-driven rewr
 
 You do **not** need Node.js, npm, or to run a single command on your computer to get this live. Vercel builds and installs everything for you.
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/YOUR-USERNAME/YOUR-REPO&env=DATABASE_URL,DIRECT_URL,NEXTAUTH_SECRET,NEXTAUTH_URL,ANTHROPIC_API_KEY&envDescription=See%20the%20Environment%20Variables%20section%20below%20for%20how%20to%20get%20each%20value&project-name=smart-query-optimizer&repository-name=smart-query-optimizer)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/YOUR-USERNAME/YOUR-REPO&env=DATABASE_URL,DIRECT_URL,NEXTAUTH_SECRET,NEXTAUTH_URL,ANTHROPIC_API_KEY,GEMINI_API_KEY&envDescription=See%20the%20Environment%20Variables%20section%20below%20for%20how%20to%20get%20each%20value&project-name=smart-query-optimizer&repository-name=smart-query-optimizer)
 
 1. Push this folder to a new GitHub repository (GitHub's web UI lets you drag-and-drop the unzipped folder to upload — no local `git` needed either, via [github.com/new](https://github.com/new) → "uploading an existing file").
 2. Click the button above (after replacing `YOUR-USERNAME/YOUR-REPO` with your repo path), or just go to [vercel.com/new](https://vercel.com/new) and import your repo manually.
@@ -24,16 +24,19 @@ You do **not** need Node.js, npm, or to run a single command on your computer to
 
 ## ✨ Features
 
-- **Real AI optimization** — every query is analyzed live by Claude Sonnet, not pre-canned. Hardened response parsing means malformed AI output or non-SQL input never produces a dead-end "optimization failed" error — invalid input now gets a specific, friendly explanation with example queries to try instead.
+- **Dual AI engine with automatic failover** — Claude is the primary optimizer; if it's rate-limited, out of quota, or briefly down, requests automatically retry against Gemini (when `GEMINI_API_KEY` is set) so a single provider limit never takes the feature offline. Hardened response parsing (with an automatic retry on malformed output) and a dedicated "that doesn't look like SQL" path mean invalid input never produces a dead-end error.
 - **Live anti-pattern scanner** — 10 regex rules flag N+1 subqueries, leading wildcards, implicit joins, etc. instantly in the editor as you type, with zero API calls.
+- **File upload** — drag-and-drop or browse for a `.sql`/`.txt` file to load it straight into the editor, alongside pasting.
 - **99-example library** — real, intentionally-flawed SQL queries across 12 domains (E-Commerce, Healthcare, Banking & Finance, HR & Payroll, SaaS Analytics, Social Media, Real Estate, Logistics & Shipping, Education, Gaming, Marketing, Travel & Hospitality), filterable by domain/difficulty/search, with one click to load any example straight into the Optimizer.
+- **Advanced analysis** — beyond the performance-gain estimate, every optimization includes an estimated query cost score, before/after row-scan estimates, and readability/maintainability notes from the AI.
 - **Full auth** — email/password via NextAuth credentials provider, bcrypt-hashed, JWT sessions.
 - **Persistent history** — every optimization saved to Neon Postgres: issues, improvements, index recs, complexity before/after, full original + optimized SQL.
-- **Analytics dashboard** — Recharts bar/radar charts, daily trend (raw SQL `jsonb_array_elements` aggregation), streak tracking, domain breakdown.
-- **Export** — download any optimization as annotated `.sql` or structured `.json`.
+- **Analytics dashboard** — Recharts bar/radar/line charts, daily trend, streak tracking, domain breakdown, AI-engine usage split, and average query cost score.
+- **Export everywhere** — download any single optimization, or your entire history, as `.sql`, `.json`, `.csv`, or a formatted `.pdf` report.
 - **Rate limiting** — 20 optimizations/hour/user, enforced server-side against the DB.
 - **Self-healing schema** — `prisma db push` runs automatically as part of every Vercel build, so the database is always in sync with the code with zero manual steps.
-- **Built-in diagnostics** — `/api/health` checks every env var and does a live database query + table-existence check, so you can self-diagnose any deployment issue in one request.
+- **Built-in diagnostics** — `/api/health` checks every env var (including which AI engine(s) are active) and does a live database query + table-existence check, so you can self-diagnose any deployment issue in one request.
+- **Polished landing page** — scroll-spy nav highlighting that tracks which section you're viewing, and every CTA/button verified clickable end-to-end.
 
 ---
 
@@ -70,9 +73,14 @@ Visit `http://localhost:3000`.
 2. Copy the **pooled connection string** → `DATABASE_URL` (must include `?sslmode=require&pgbouncer=true`).
 3. Copy the **direct connection string** → `DIRECT_URL` (used only for migrations, no pgbouncer).
 
-### Anthropic API key
+### Anthropic API key (primary AI engine)
 1. [console.anthropic.com](https://console.anthropic.com) → API Keys → Create Key.
 2. Copy into `ANTHROPIC_API_KEY`.
+
+### Gemini API key (automatic fallback engine — recommended)
+1. [aistudio.google.com/apikey](https://aistudio.google.com/apikey) → Create API Key (free tier available).
+2. Copy into `GEMINI_API_KEY`.
+3. You only need **one** of Claude or Gemini for the app to work, but setting both means a Claude rate limit, quota issue, or outage automatically fails over to Gemini instead of breaking the optimizer — recommended for production.
 
 ### NextAuth secret
 ```bash
@@ -90,9 +98,12 @@ Copy the output into `NEXTAUTH_SECRET`.
 | `DIRECT_URL` | ✅ | Neon **direct** connection string (migrations) |
 | `NEXTAUTH_SECRET` | ✅ | `openssl rand -base64 32` |
 | `NEXTAUTH_URL` | ✅ | `http://localhost:3000` locally; your Vercel URL in prod |
-| `ANTHROPIC_API_KEY` | ✅ | From console.anthropic.com |
+| `ANTHROPIC_API_KEY` | ⚠️ one of these two | Primary AI engine — from console.anthropic.com |
+| `GEMINI_API_KEY` | ⚠️ one of these two | Automatic fallback engine — from aistudio.google.com/apikey |
 | `NEXT_PUBLIC_APP_URL` | Optional | Used in metadata/OG tags |
 | `RATE_LIMIT_MAX` | Optional | Default `20` (optimizations/hour) |
+
+You need **at least one** of `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` — set both for automatic failover.
 
 **Never commit `.env` or `.env.local`** — `.gitignore` already blocks every `.env*` variant except `.env.example`.
 

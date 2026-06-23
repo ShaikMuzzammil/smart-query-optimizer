@@ -16,17 +16,20 @@ export async function GET(req: Request) {
     const domain = searchParams.get("domain");
     const search = searchParams.get("search");
     const favorites = searchParams.get("favorites") === "true";
+    const queryType = searchParams.get("queryType");
     const skip = (page - 1) * limit;
 
     const where = {
       userId: session.user.id,
       ...(domain && domain !== "all" ? { domain } : {}),
       ...(favorites ? { isFavorited: true } : {}),
+      ...(queryType && queryType !== "all" ? { queryType } : {}),
       ...(search
         ? {
             OR: [
               { title: { contains: search, mode: "insensitive" as const } },
               { originalQuery: { contains: search, mode: "insensitive" as const } },
+              { optimizedQuery: { contains: search, mode: "insensitive" as const } },
               { domain: { contains: search, mode: "insensitive" as const } },
             ],
           }
@@ -43,6 +46,8 @@ export async function GET(req: Request) {
           performanceGain: true, issues: true, improvements: true,
           indexRecs: true, tablesDetected: true, complexityBefore: true,
           complexityAfter: true, estimatedSpeedup: true, explanation: true,
+          estimatedRowsScanned: true, costScore: true, readabilityNotes: true,
+          engine: true,
           originalQuery: true, optimizedQuery: true,
           isFavorited: true, isShared: true, shareToken: true,
           executionTimeMs: true, createdAt: true,
@@ -67,7 +72,12 @@ export async function DELETE(req: Request) {
 
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
-    if (!id) return NextResponse.json({ error: "ID required" }, { status: 400 });
+
+    // No id = clear ALL history for this user (used by Settings "Clear History")
+    if (!id) {
+      const { count } = await db.query.deleteMany({ where: { userId: session.user.id } });
+      return NextResponse.json({ success: true, deleted: count });
+    }
 
     const query = await db.query.findFirst({ where: { id, userId: session.user.id } });
     if (!query) return NextResponse.json({ error: "Not found" }, { status: 404 });

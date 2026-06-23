@@ -6,29 +6,36 @@ import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { SqlBlock } from "@/components/optimizer/SqlBlock";
 import { ScoreRing } from "@/components/optimizer/ScoreRing";
+import { ExportMenu } from "@/components/optimizer/ExportMenu";
 import { SEVERITY_CONFIG } from "@/lib/utils";
 import { SQL_EXAMPLES } from "@/lib/examples-data";
 import { toast } from "sonner";
 import {
-  Zap, Loader2, AlertTriangle, CheckCircle2, Download,
-  Copy, Sparkles, BookOpen, HelpCircle,
+  Zap, Loader2, AlertTriangle, CheckCircle2, Copy, Sparkles, BookOpen,
+  HelpCircle, Upload, FileUp, Gauge, Database, Cpu, TrendingUp,
+  SplitSquareHorizontal, AlignLeft, AlignRight, ChevronRight,
 } from "lucide-react";
 
-// ── Live anti-pattern scanner (instant, no API)
+// ── Live scanner ──────────────────────────────────────────────────────────────
 const SCAN_PATTERNS = [
-  { id:"n1", sev:"critical", title:"Correlated Subquery (N+1)", rx:/SELECT\b[\s\S]{0,120}SELECT\b/i, tip:"A SELECT inside another SELECT runs once per outer row. Use JOIN + GROUP BY instead." },
-  { id:"n2", sev:"critical", title:"Leading Wildcard LIKE",     rx:/LIKE\s+['"]%[^%'"]/i,            tip:"LIKE '%text%' disables all indexes — full table scan. Use full-text search instead." },
-  { id:"n3", sev:"high",     title:"Function on Indexed Column",rx:/\b(YEAR|MONTH|DAY|DATE|LOWER|UPPER|TRIM)\s*\(/i, tip:"Wrapping a column in a function prevents index usage." },
-  { id:"n4", sev:"high",     title:"Implicit JOIN (Comma)",     rx:/FROM\s+\w+\s*,\s*\w+/i,          tip:"Comma joins prevent the optimizer from reordering joins." },
-  { id:"n5", sev:"medium",   title:"Missing LIMIT Clause",      rx:/SELECT\b(?![\s\S]*\bLIMIT\b)/i, tip:"Without LIMIT, queries can return unbounded result sets." },
-  { id:"n6", sev:"medium",   title:"SELECT * (All Columns)",    rx:/SELECT\s+\*/i,                   tip:"SELECT * transfers unnecessary data. Specify needed columns." },
-  { id:"n7", sev:"low",      title:"NOT IN with Subquery",      rx:/NOT\s+IN\s*\(\s*SELECT/i,         tip:"NOT IN with NULLs can return unexpected empty results. Use NOT EXISTS." },
+  { id: "n1", sev: "critical", title: "Correlated Subquery (N+1)",   rx: /SELECT\b[\s\S]{0,200}SELECT\b/i, tip: "A SELECT inside another SELECT runs once per outer row. Use JOIN + GROUP BY instead." },
+  { id: "n2", sev: "critical", title: "Leading Wildcard LIKE",        rx: /LIKE\s+['"]%[^%'"]/i,            tip: "LIKE '%text%' disables index usage — causes a full table scan every time." },
+  { id: "n3", sev: "high",     title: "Function on Indexed Column",   rx: /\b(YEAR|MONTH|DAY|DATE|LOWER|UPPER|TRIM)\s*\(/i, tip: "Wrapping a column in a function prevents the query planner from using its index." },
+  { id: "n4", sev: "high",     title: "Implicit JOIN (Comma Syntax)", rx: /FROM\s+\w+\s*,\s*\w+/i,          tip: "Comma-style joins block the optimizer from reordering join order for best performance." },
+  { id: "n5", sev: "medium",   title: "Missing LIMIT Clause",         rx: /SELECT\b(?![\s\S]*\bLIMIT\b)/i,  tip: "Without LIMIT, queries return unbounded result sets — dangerous in production." },
+  { id: "n6", sev: "medium",   title: "SELECT * (All Columns)",       rx: /SELECT\s+\*/i,                    tip: "SELECT * fetches unnecessary columns, wastes network bandwidth, and can't use covering indexes." },
+  { id: "n7", sev: "medium",   title: "NOT IN with Subquery",         rx: /NOT\s+IN\s*\(\s*SELECT/i,         tip: "NOT IN returns nothing if the subquery has any NULL rows. Use NOT EXISTS instead." },
+  { id: "n8", sev: "low",      title: "OR Across Different Columns",  rx: /WHERE\s+.*\bOR\b/i,               tip: "OR across different columns often can't use a single index. Consider UNION ALL." },
 ];
 
 function useLiveScanner(sql: string) {
-  return useMemo(() => sql.trim().length < 10 ? [] : SCAN_PATTERNS.filter(p => p.rx.test(sql)), [sql]);
+  return useMemo(
+    () => sql.trim().length < 8 ? [] : SCAN_PATTERNS.filter(p => p.rx.test(sql)),
+    [sql]
+  );
 }
 
+// ── Types ─────────────────────────────────────────────────────────────────────
 interface OptimizeResult {
   id?: string | null;
   isValidSql: boolean;
@@ -44,35 +51,62 @@ interface OptimizeResult {
   tablesDetected: string[];
   queryType: string;
   originalQuery?: string;
+  estimatedRowsScanned?: string;
+  costScore?: number;
+  readabilityNotes?: string;
+  engine?: "claude" | "gemini";
 }
 
+type ResultTab = "summary" | "sql" | "issues" | "improvements";
+
+// ── Component ─────────────────────────────────────────────────────────────────
 function OptimizerContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [result, setResult] = useState<OptimizeResult | null>(null);
   const [loading, setLoading] = useState(false);
-  const [view, setView] = useState<"split"|"before"|"after">("split");
+  const [sqlView, setSqlView] = useState<"split" | "before" | "after">("split");
+  const [resultTab, setResultTab] = useState<ResultTab>("summary");
+  const [dragOver, setDragOver] = useState(false);
   const scanHits = useLiveScanner(query);
 
-  // Prefill from an Examples-library deep link: /optimizer?example=ex001
+  // Load example from URL param
   useEffect(() => {
-    const exampleId = searchParams.get("example");
-    if (!exampleId) return;
-    const ex = SQL_EXAMPLES.find((e) => e.id === exampleId);
-    if (ex) {
-      setQuery(ex.sql);
-      setResult(null);
-      toast.message(`Loaded: ${ex.issueTag} (${ex.domain})`);
-    }
+    const id = searchParams.get("example");
+    if (!id) return;
+    const ex = SQL_EXAMPLES.find(e => e.id === id);
+    if (ex) { setQuery(ex.sql); setResult(null); toast.message(`Loaded: ${ex.issueTag}`); }
     router.replace("/optimizer");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams]);
+  }, [searchParams, router]);
 
   const randomExamples = useMemo(
     () => [...SQL_EXAMPLES].sort(() => Math.random() - 0.5).slice(0, 3),
     []
   );
+
+  // Keyboard shortcut
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") optimize(); };
+    document.addEventListener("keydown", h);
+    return () => document.removeEventListener("keydown", h);
+  });
+
+  // File upload
+  const loadFile = useCallback((file: File) => {
+    if (!/\.(sql|txt)$/i.test(file.name)) { toast.error("Please upload a .sql or .txt file"); return; }
+    if (file.size > 2 * 1024 * 1024) { toast.error("File too large — keep it under 2MB"); return; }
+    const r = new FileReader();
+    r.onload = () => { setQuery(String(r.result ?? "")); setResult(null); toast.success(`Loaded ${file.name}`); };
+    r.readAsText(file);
+  }, []);
+
+  const onDrop = (e: React.DragEvent<HTMLTextAreaElement>) => {
+    e.preventDefault(); setDragOver(false);
+    const f = e.dataTransfer.files?.[0]; if (f) loadFile(f);
+  };
+
+  const copy = (text: string) => { navigator.clipboard.writeText(text); toast.success("Copied to clipboard!"); };
 
   const optimize = useCallback(async () => {
     if (!query.trim()) { toast.warning("Paste a SQL query first"); return; }
@@ -85,79 +119,95 @@ function OptimizerContent() {
       const data = await res.json();
       if (!res.ok) { toast.error(data.error ?? "Optimization failed — please try again"); return; }
       setResult({ ...data, originalQuery: query });
-      if (data.isValidSql === false) {
-        toast.warning("That doesn't look like a SQL query");
-      } else {
-        toast.success(`⚡ +${data.performanceGain}% estimated performance gain`);
-      }
-    } catch {
-      toast.error("Network error — please check your connection and try again");
-    } finally { setLoading(false); }
+      setResultTab("summary");
+      if (data.isValidSql === false) toast.warning("That doesn't look like a SQL query");
+      else toast.success(`⚡ +${data.performanceGain}% estimated performance gain`);
+    } catch { toast.error("Network error — please check your connection"); }
+    finally { setLoading(false); }
   }, [query]);
 
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); optimize(); }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [optimize]);
-
-  const copy = (text: string) => { navigator.clipboard.writeText(text); toast.success("Copied!"); };
-
-  const exportSql = async () => {
-    if (!result?.id) { copy(result?.optimizedQuery ?? ""); return; }
-    window.open(`/api/export?id=${result.id}&format=sql`, "_blank");
-  };
+  const tabs: Array<{ key: ResultTab; label: string; count?: number }> = [
+    { key: "summary",      label: "Summary" },
+    { key: "sql",          label: "SQL Diff" },
+    { key: "issues",       label: "Issues",      count: result?.issues?.length },
+    { key: "improvements", label: "Improvements", count: result?.improvements?.length },
+  ];
 
   return (
     <div className="p-6 lg:p-8 max-w-[1500px] mx-auto">
+      {/* Page header */}
       <div className="mb-6">
         <h1 className="text-2xl font-black mb-1">SQL Optimizer</h1>
         <p className="text-slate-400 text-sm">Paste a query, get an AI-optimized version with full analysis</p>
       </div>
 
-      <div className="grid lg:grid-cols-2 gap-6">
+      <div className="grid lg:grid-cols-2 gap-5">
 
-        {/* LEFT: input */}
+        {/* ── LEFT: Input panel ── */}
         <div className="space-y-4">
           <div className="glass-card rounded-2xl p-5">
+            {/* Input header */}
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-sm font-semibold">SQL Input</h2>
-              <div className="flex items-center gap-2 text-xs">
+              <div className="flex items-center gap-3 text-xs text-slate-500">
                 <kbd className="px-1.5 py-0.5 bg-violet-500/15 border border-violet-500/25 rounded text-[10px] text-violet-300 font-mono">⌘ Enter</kbd>
-                <button onClick={() => { setQuery(""); setResult(null); }} className="text-slate-500 hover:text-slate-300">Clear</button>
+                <label className="flex items-center gap-1 hover:text-violet-300 cursor-pointer transition-colors">
+                  <Upload className="w-3.5 h-3.5" /> Upload .sql
+                  <input type="file" accept=".sql,.txt" className="hidden"
+                    onChange={e => { const f = e.target.files?.[0]; if (f) loadFile(f); e.target.value = ""; }} />
+                </label>
+                <button onClick={() => { setQuery(""); setResult(null); }} className="hover:text-slate-300 transition-colors">Clear</button>
               </div>
             </div>
 
-            <textarea value={query} onChange={e => setQuery(e.target.value)}
-              placeholder={"Paste your SQL query here…\n\n-- Example:\nSELECT * FROM orders o, customers c\nWHERE o.customer_id = c.id\nAND YEAR(o.created_at) = 2024"}
-              className="w-full min-h-[220px] bg-[#020208] border border-violet-500/20 rounded-lg p-3.5 text-xs font-mono leading-7 text-slate-200 placeholder:text-slate-600 outline-none focus:border-violet-500/50 transition-colors resize-y"/>
-
-            <div className="flex gap-4 mt-3 px-3 py-2 bg-violet-500/8 rounded-lg text-[11px] text-slate-400 flex-wrap">
-              <span>Chars: <b className="text-violet-300">{query.length}</b></span>
-              <span>Lines: <b className="text-violet-300">{query.split("\n").length}</b></span>
-              {scanHits.length > 0 && <span className="ml-auto text-amber-400 font-semibold animate-pulse2">⚠ {scanHits.length} issue{scanHits.length!==1?"s":""} detected</span>}
+            {/* Textarea with drag-and-drop */}
+            <div className="relative">
+              <textarea value={query} onChange={e => setQuery(e.target.value)}
+                onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={onDrop}
+                placeholder={"Paste SQL here, or drag & drop a .sql file…\n\nExample:\nSELECT * FROM orders o, customers c\nWHERE o.customer_id = c.id\nAND YEAR(o.created_at) = 2024"}
+                className={`w-full min-h-[240px] bg-[#020208] border rounded-xl p-4 text-xs font-mono leading-7 text-slate-200 placeholder:text-slate-600 outline-none transition-colors resize-y ${dragOver ? "border-violet-400 ring-2 ring-violet-500/30" : "border-violet-500/20 focus:border-violet-500/50"}`} />
+              {dragOver && (
+                <div className="absolute inset-0 bg-violet-950/80 border-2 border-dashed border-violet-400 rounded-xl flex items-center justify-center gap-2 text-violet-200 text-sm font-semibold pointer-events-none">
+                  <FileUp className="w-5 h-5" /> Drop .sql or .txt file to load
+                </div>
+              )}
             </div>
 
+            {/* Stats row */}
+            <div className="flex items-center justify-between mt-2.5 text-[10px] text-slate-500">
+              <span>Chars: {query.length} · Lines: {query.split("\n").length}</span>
+              {scanHits.length > 0 && (
+                <span className="text-amber-400 font-semibold flex items-center gap-1">
+                  <AlertTriangle className="w-3 h-3" /> {scanHits.length} issue{scanHits.length !== 1 ? "s" : ""} detected
+                </span>
+              )}
+            </div>
+
+            {/* Optimize button */}
             <button onClick={optimize} disabled={loading || !query.trim()}
-              className="w-full mt-3 py-3 bg-gradient-to-r from-violet-600 to-violet-700 hover:from-violet-500 hover:to-violet-600 disabled:opacity-40 text-white font-semibold rounded-xl transition-all flex items-center justify-center gap-2 glow-violet">
-              {loading ? <><Loader2 className="w-4 h-4 animate-spin"/>Analyzing with AI…</> : <><Zap className="w-4 h-4"/>Optimize with AI</>}
+              className="w-full mt-3 py-3.5 bg-gradient-to-r from-violet-600 to-violet-700 hover:from-violet-500 hover:to-violet-600 disabled:opacity-40 text-white font-bold rounded-xl transition-all flex items-center justify-center gap-2 glow-violet">
+              {loading
+                ? <><Loader2 className="w-4 h-4 animate-spin" /> Analyzing with AI…</>
+                : <><Zap className="w-4 h-4" /> Optimize with AI</>}
             </button>
           </div>
 
-          {/* Live scanner results */}
+          {/* Live scanner */}
           <AnimatePresence>
             {scanHits.length > 0 && (
-              <motion.div initial={{opacity:0,height:0}} animate={{opacity:1,height:"auto"}} exit={{opacity:0,height:0}}
-                className="glass-card rounded-2xl p-5 border-amber-500/25 overflow-hidden">
-                <div className="text-[10px] font-semibold text-amber-400 tracking-wider mb-3">⚡ LIVE SCANNER — INSTANT ANALYSIS</div>
+              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
+                className="glass-card rounded-2xl p-4 border-amber-500/25 overflow-hidden">
+                <div className="text-[10px] font-bold text-amber-400 tracking-wider mb-3 flex items-center gap-1.5">
+                  <Zap className="w-3 h-3" /> LIVE SCANNER — INSTANT ANALYSIS
+                </div>
                 <div className="space-y-2">
                   {scanHits.map(h => {
                     const s = SEVERITY_CONFIG[h.sev as keyof typeof SEVERITY_CONFIG];
                     return (
                       <div key={h.id} className={`flex gap-2.5 p-2.5 rounded-lg ${s.bg} border-l-2 ${s.border}`}>
-                        <AlertTriangle className={`w-3.5 h-3.5 mt-0.5 flex-shrink-0 ${s.color}`}/>
+                        <AlertTriangle className={`w-3.5 h-3.5 mt-0.5 flex-shrink-0 ${s.color}`} />
                         <div>
                           <div className={`text-[11px] font-semibold ${s.color}`}>{h.title}</div>
                           <div className="text-[10px] text-slate-400 mt-0.5">{h.tip}</div>
@@ -169,151 +219,263 @@ function OptimizerContent() {
               </motion.div>
             )}
           </AnimatePresence>
+
+          {/* Quick examples (shown when no result yet) */}
+          {!result && !loading && (
+            <div className="glass-card rounded-2xl p-4">
+              <div className="text-[10px] font-semibold text-slate-500 tracking-wider mb-2.5 flex items-center gap-1.5">
+                <BookOpen className="w-3 h-3" /> QUICK-LOAD EXAMPLES
+              </div>
+              <div className="space-y-1.5">
+                {randomExamples.map(ex => (
+                  <button key={ex.id} onClick={() => { setQuery(ex.sql); toast.message(`Loaded: ${ex.issueTag}`); }}
+                    className="w-full flex items-center justify-between gap-2 px-3 py-2 bg-violet-500/5 hover:bg-violet-500/10 border border-violet-500/10 rounded-xl text-left transition-colors group">
+                    <div className="min-w-0">
+                      <div className="text-[11px] text-slate-300 truncate group-hover:text-white transition-colors">{ex.issueTag}</div>
+                      <div className="text-[10px] text-slate-500">{ex.domain} · {ex.difficulty}</div>
+                    </div>
+                    <ChevronRight className="w-3.5 h-3.5 text-violet-400 flex-shrink-0" />
+                  </button>
+                ))}
+              </div>
+              <Link href="/examples" className="mt-3 text-[11px] text-violet-400 hover:text-violet-300 transition-colors flex items-center gap-1.5">
+                <BookOpen className="w-3 h-3" /> Browse all {SQL_EXAMPLES.length} examples →
+              </Link>
+            </div>
+          )}
         </div>
 
-        {/* RIGHT: results */}
+        {/* ── RIGHT: Result panel ── */}
         <div>
           {!result ? (
-            <div className="glass-card rounded-2xl p-12 flex flex-col items-center justify-center text-center min-h-[480px] gap-4">
-              <div className="w-16 h-16 rounded-full bg-violet-500/15 border border-violet-500/30 flex items-center justify-center">
-                <Sparkles className="w-7 h-7 text-violet-400"/>
+            // Empty state
+            <div className="glass-card rounded-2xl p-12 flex flex-col items-center justify-center text-center min-h-[520px] gap-4">
+              <div className="w-20 h-20 rounded-full bg-violet-500/10 border border-violet-500/25 flex items-center justify-center">
+                <Sparkles className="w-9 h-9 text-violet-400" />
               </div>
               <div>
-                <div className="text-lg font-bold mb-2">Ready to Optimize</div>
-                <p className="text-sm text-slate-400 max-w-xs">Paste a SQL query and click <b className="text-violet-300">Optimize with AI</b> to see the magic happen.</p>
+                <div className="text-xl font-bold mb-2">Ready to Optimize</div>
+                <p className="text-sm text-slate-400 max-w-xs leading-relaxed">
+                  Paste a SQL query and click <b className="text-violet-300">Optimize with AI</b> — or load one of the examples on the left.
+                </p>
               </div>
-              <div className="w-full max-w-sm pt-2">
-                <div className="text-[10px] text-slate-500 tracking-wider mb-2">OR TRY A REAL EXAMPLE</div>
-                <div className="space-y-1.5">
-                  {randomExamples.map((ex) => (
-                    <button key={ex.id} onClick={() => { setQuery(ex.sql); toast.message(`Loaded: ${ex.issueTag}`); }}
-                      className="w-full flex items-center justify-between gap-2 px-3 py-2 bg-violet-500/8 hover:bg-violet-500/14 border border-violet-500/15 rounded-lg text-left transition-colors">
-                      <span className="text-[11px] text-slate-300 truncate">{ex.issueTag} <span className="text-slate-500">· {ex.domain}</span></span>
-                      <Zap className="w-3 h-3 text-violet-400 flex-shrink-0"/>
-                    </button>
-                  ))}
-                </div>
-                <Link href="/examples" className="inline-flex items-center gap-1.5 text-[11px] text-violet-400 hover:text-violet-300 mt-3 transition-colors">
-                  <BookOpen className="w-3.5 h-3.5"/> Browse all {SQL_EXAMPLES.length} examples
-                </Link>
+              <div className="grid grid-cols-3 gap-3 w-full max-w-sm mt-2">
+                {[["⚡", "Instant scan"], ["🤖", "AI rewrite"], ["📥", "4 formats"]].map(([icon, label]) => (
+                  <div key={label} className="glass-card rounded-xl p-3 text-center">
+                    <div className="text-xl mb-1">{icon}</div>
+                    <div className="text-[10px] text-slate-500">{label}</div>
+                  </div>
+                ))}
               </div>
             </div>
           ) : result.isValidSql === false ? (
-            <motion.div initial={{opacity:0,y:10}} animate={{opacity:1,y:0}}
-              className="glass-card rounded-2xl p-10 flex flex-col items-center justify-center text-center min-h-[480px] gap-4 border-amber-500/25">
-              <div className="w-16 h-16 rounded-full bg-amber-500/15 border border-amber-500/30 flex items-center justify-center">
-                <HelpCircle className="w-7 h-7 text-amber-400"/>
+            // Not-SQL state
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+              className="glass-card rounded-2xl p-10 flex flex-col items-center justify-center text-center min-h-[520px] gap-4 border-amber-500/20">
+              <div className="w-16 h-16 rounded-full bg-amber-500/10 border border-amber-500/25 flex items-center justify-center">
+                <HelpCircle className="w-7 h-7 text-amber-400" />
               </div>
               <div>
                 <div className="text-lg font-bold mb-2">That doesn&apos;t look like SQL</div>
-                <p className="text-sm text-slate-400 max-w-sm">{result.explanation || "Paste a real SQL query — something like a SELECT, INSERT, UPDATE, or DELETE statement — and I'll analyze it."}</p>
+                <p className="text-sm text-slate-400 max-w-sm leading-relaxed">
+                  {result.explanation || "Paste a SELECT, INSERT, UPDATE, or DELETE statement and I'll analyze it."}
+                </p>
               </div>
-              <div className="w-full max-w-sm pt-2">
-                <div className="text-[10px] text-slate-500 tracking-wider mb-2">TRY ONE OF THESE INSTEAD</div>
-                <div className="space-y-1.5">
-                  {randomExamples.map((ex) => (
-                    <button key={ex.id} onClick={() => { setQuery(ex.sql); setResult(null); toast.message(`Loaded: ${ex.issueTag}`); }}
-                      className="w-full flex items-center justify-between gap-2 px-3 py-2 bg-violet-500/8 hover:bg-violet-500/14 border border-violet-500/15 rounded-lg text-left transition-colors">
-                      <span className="text-[11px] text-slate-300 truncate">{ex.issueTag} <span className="text-slate-500">· {ex.domain}</span></span>
-                      <Zap className="w-3 h-3 text-violet-400 flex-shrink-0"/>
-                    </button>
-                  ))}
-                </div>
+              <div className="space-y-1.5 w-full max-w-sm">
+                <div className="text-[10px] text-slate-600 tracking-wider mb-2">TRY ONE OF THESE INSTEAD</div>
+                {randomExamples.map(ex => (
+                  <button key={ex.id} onClick={() => { setQuery(ex.sql); setResult(null); }}
+                    className="w-full flex items-center justify-between gap-2 px-3 py-2 bg-violet-500/5 hover:bg-violet-500/10 border border-violet-500/10 rounded-xl text-left transition-colors">
+                    <span className="text-[11px] text-slate-300 truncate">{ex.issueTag} <span className="text-slate-500">· {ex.domain}</span></span>
+                    <Zap className="w-3 h-3 text-violet-400 flex-shrink-0" />
+                  </button>
+                ))}
               </div>
             </motion.div>
           ) : (
-            <motion.div initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} className="space-y-4">
-              {/* Score + summary */}
-              <div className="glass-card rounded-2xl p-5 flex gap-5 items-center">
-                <ScoreRing score={result.performanceGain}/>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-semibold mb-2">Optimization Summary</div>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    {[["Speedup", result.estimatedSpeedup],["Type", result.queryType],["Before", result.complexityBefore],["After", result.complexityAfter]].map(([k,v]) => (
-                      <div key={k} className="bg-violet-500/10 rounded px-2 py-1">
-                        <div className="text-[9px] text-slate-500">{k}</div>
-                        <div className="text-[11px] font-mono text-violet-300 font-semibold">{v}</div>
-                      </div>
-                    ))}
-                  </div>
-                  {result.tablesDetected?.length > 0 && (
-                    <div className="flex gap-1 flex-wrap mt-2">
-                      {result.tablesDetected.map(t => <span key={t} className="text-[10px] px-1.5 py-0.5 bg-sky-500/10 text-sky-400 rounded border border-sky-500/15">{t}</span>)}
+            // Full result panel
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+
+              {/* Score bar */}
+              <div className="glass-card rounded-2xl p-5">
+                <div className="flex items-center gap-5">
+                  <ScoreRing score={result.performanceGain} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="text-sm font-bold">Optimization Complete</div>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-500/10 border border-slate-500/20 text-slate-400 capitalize flex items-center gap-1">
+                        <Cpu className="w-2.5 h-2.5" /> via {result.engine ?? "claude"}
+                      </span>
                     </div>
-                  )}
+                    <div className="grid grid-cols-2 gap-1.5 mb-2">
+                      {[["Speedup", result.estimatedSpeedup], ["Query Type", result.queryType], ["Complexity ↑", result.complexityBefore], ["Complexity ↓", result.complexityAfter]].map(([k, v]) => (
+                        <div key={k} className="bg-violet-500/8 rounded-lg px-2.5 py-1.5">
+                          <div className="text-[9px] text-slate-500">{k}</div>
+                          <div className="text-[11px] font-mono text-violet-300 font-semibold truncate">{v}</div>
+                        </div>
+                      ))}
+                    </div>
+                    {result.tablesDetected?.length > 0 && (
+                      <div className="flex gap-1 flex-wrap">
+                        {result.tablesDetected.map(t => (
+                          <span key={t} className="text-[10px] px-1.5 py-0.5 bg-sky-500/10 text-sky-400 rounded border border-sky-500/15">{t}</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
+
+                {/* Advanced metrics inline */}
+                {(typeof result.costScore === "number" || (result.estimatedRowsScanned && result.estimatedRowsScanned !== "N/A")) && (
+                  <div className="mt-4 pt-4 border-t border-violet-500/10 grid sm:grid-cols-2 gap-3">
+                    {typeof result.costScore === "number" && (
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[10px] text-slate-500 flex items-center gap-1"><Gauge className="w-3 h-3" />Query cost score</span>
+                          <span className="text-[11px] font-mono font-bold text-violet-300">{result.costScore}/100</span>
+                        </div>
+                        <div className="h-1.5 bg-violet-500/10 rounded-full overflow-hidden">
+                          <div className="h-full bg-gradient-to-r from-emerald-500 to-amber-400 rounded-full" style={{ width: `${result.costScore}%` }} />
+                        </div>
+                      </div>
+                    )}
+                    {result.estimatedRowsScanned && result.estimatedRowsScanned !== "N/A" && (
+                      <div className="flex items-center gap-2">
+                        <Database className="w-3.5 h-3.5 text-sky-400 flex-shrink-0" />
+                        <div>
+                          <div className="text-[9px] text-slate-500">Rows scanned (est.)</div>
+                          <div className="text-[11px] font-mono text-sky-300">{result.estimatedRowsScanned}</div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
-              {/* Issues */}
-              {result.issues?.length > 0 && (
-                <div className="glass-card rounded-2xl p-4">
-                  <div className="text-[10px] font-semibold text-rose-400 tracking-wider mb-2.5">⚠ ISSUES DETECTED ({result.issues.length})</div>
-                  <div className="space-y-1.5">
-                    {result.issues.map((iss, i) => {
-                      const s = SEVERITY_CONFIG[iss.severity as keyof typeof SEVERITY_CONFIG] ?? SEVERITY_CONFIG.low;
-                      return (
-                        <div key={i} className={`flex gap-2 p-2 rounded-lg ${s.bg} border-l-2 ${s.border}`}>
-                          <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded ${s.dot} text-black flex-shrink-0 mt-0.5`}>{s.label}</span>
-                          <span className="text-[11px] text-slate-200 leading-relaxed">{iss.description}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* View toggle */}
-              <div className="flex gap-1.5">
-                {(["split","before","after"] as const).map(v => (
-                  <button key={v} onClick={() => setView(v)}
-                    className={`flex-1 py-1.5 rounded-lg text-xs transition-all border ${view===v ? "bg-violet-500/15 border-violet-500/40 text-violet-300" : "border-violet-500/15 text-slate-500"}`}>
-                    {v === "split" ? "Split View" : v === "before" ? "Original" : "Optimized"}
+              {/* Tabs */}
+              <div className="flex gap-1 glass-card rounded-2xl p-1.5">
+                {tabs.map(tab => (
+                  <button key={tab.key} onClick={() => setResultTab(tab.key)}
+                    className={`flex-1 py-2 text-xs font-semibold rounded-xl transition-all flex items-center justify-center gap-1.5 ${resultTab === tab.key ? "bg-violet-600 text-white" : "text-slate-400 hover:text-white"}`}>
+                    {tab.label}
+                    {tab.count != null && tab.count > 0 && (
+                      <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${resultTab === tab.key ? "bg-white/20 text-white" : "bg-violet-500/20 text-violet-400"}`}>{tab.count}</span>
+                    )}
                   </button>
                 ))}
               </div>
 
-              {(view==="split"||view==="before") && <SqlBlock sql={result.originalQuery ?? query} label="▶ ORIGINAL QUERY"/>}
-              {(view==="split"||view==="after")  && <SqlBlock sql={result.optimizedQuery} label="✓ OPTIMIZED QUERY"/>}
+              {/* Tab content */}
+              <AnimatePresence mode="wait">
+                {resultTab === "summary" && (
+                  <motion.div key="summary" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-3">
+                    {result.explanation && (
+                      <div className="glass-card rounded-2xl p-4">
+                        <div className="text-[10px] font-bold text-violet-300 tracking-wider mb-2">💡 AI EXPLANATION</div>
+                        <p className="text-xs text-slate-300 leading-relaxed">{result.explanation}</p>
+                      </div>
+                    )}
+                    {result.readabilityNotes && (
+                      <div className="glass-card rounded-2xl p-4">
+                        <div className="text-[10px] font-bold text-slate-400 tracking-wider mb-2">📝 READABILITY NOTES</div>
+                        <p className="text-xs text-slate-400 leading-relaxed">{result.readabilityNotes}</p>
+                      </div>
+                    )}
+                    {result.indexRecommendations?.length > 0 && (
+                      <div className="glass-card rounded-2xl p-4">
+                        <div className="text-[10px] font-bold text-sky-400 tracking-wider mb-2.5">⬡ INDEX RECOMMENDATIONS <span className="text-slate-600">(click to copy)</span></div>
+                        <div className="space-y-1.5">
+                          {result.indexRecommendations.map((idx, i) => (
+                            <div key={i} onClick={() => copy(idx)}
+                              className="flex items-center justify-between font-mono text-[10.5px] text-sky-300 bg-sky-500/8 rounded-xl px-3 py-2.5 cursor-pointer hover:bg-sky-500/14 transition-colors border border-sky-500/15">
+                              <span className="truncate">{idx}</span>
+                              <Copy className="w-3 h-3 flex-shrink-0 ml-2" />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </motion.div>
+                )}
 
-              {/* Improvements */}
-              {result.improvements?.length > 0 && (
-                <div className="glass-card rounded-2xl p-4">
-                  <div className="text-[10px] font-semibold text-emerald-400 tracking-wider mb-2">✓ IMPROVEMENTS APPLIED</div>
-                  {result.improvements.map((imp, i) => (
-                    <div key={i} className="flex gap-2 text-[12px] text-slate-200 py-1.5 border-b border-violet-500/10 last:border-0">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0 mt-0.5"/>{imp}
+                {resultTab === "sql" && (
+                  <motion.div key="sql" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-3">
+                    <div className="flex gap-1.5 glass-card rounded-2xl p-1.5">
+                      {([["split", <SplitSquareHorizontal key="s" className="w-3.5 h-3.5" />, "Split"], ["before", <AlignLeft key="b" className="w-3.5 h-3.5" />, "Original"], ["after", <AlignRight key="a" className="w-3.5 h-3.5" />, "Optimized"]] as const).map(([v, icon, label]) => (
+                        <button key={v} onClick={() => setSqlView(v as typeof sqlView)}
+                          className={`flex-1 py-1.5 text-[11px] font-semibold rounded-xl transition-all flex items-center justify-center gap-1.5 ${sqlView === v ? "bg-violet-600 text-white" : "text-slate-400 hover:text-white"}`}>
+                          {icon}{label}
+                        </button>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              )}
+                    {(sqlView === "split" || sqlView === "before") && <SqlBlock sql={result.originalQuery ?? query} label="▶  ORIGINAL QUERY" />}
+                    {(sqlView === "split" || sqlView === "after") && <SqlBlock sql={result.optimizedQuery} label="✓  OPTIMIZED QUERY" />}
+                  </motion.div>
+                )}
 
-              {/* Index recs */}
-              {result.indexRecommendations?.length > 0 && (
-                <div className="glass-card rounded-2xl p-4">
-                  <div className="text-[10px] font-semibold text-sky-400 tracking-wider mb-2">⬡ INDEX RECOMMENDATIONS</div>
-                  {result.indexRecommendations.map((idx, i) => (
-                    <div key={i} onClick={() => copy(idx)} className="flex items-center justify-between font-mono text-[10.5px] text-sky-300 bg-sky-500/8 rounded-lg px-3 py-2 mb-1.5 cursor-pointer hover:bg-sky-500/14 transition-colors">
-                      <span>{idx}</span><Copy className="w-3 h-3 flex-shrink-0"/>
-                    </div>
-                  ))}
-                </div>
-              )}
+                {resultTab === "issues" && (
+                  <motion.div key="issues" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+                    {result.issues?.length > 0 ? (
+                      <div className="glass-card rounded-2xl p-4 space-y-2">
+                        <div className="text-[10px] font-bold text-rose-400 tracking-wider mb-3">⚠ ISSUES DETECTED — {result.issues.length} found</div>
+                        {result.issues.map((iss, i) => {
+                          const s = SEVERITY_CONFIG[iss.severity as keyof typeof SEVERITY_CONFIG] ?? SEVERITY_CONFIG.low;
+                          return (
+                            <div key={i} className={`flex gap-2.5 p-3 rounded-xl ${s.bg} border-l-2 ${s.border}`}>
+                              <span className={`text-[8px] font-black px-1.5 py-0.5 rounded ${s.dot} text-black self-start mt-0.5 flex-shrink-0`}>{s.label}</span>
+                              <p className="text-[11px] text-slate-200 leading-relaxed">{iss.description}</p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="glass-card rounded-2xl p-8 text-center text-slate-500 text-sm">
+                        <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto mb-2" />No issues detected
+                      </div>
+                    )}
+                  </motion.div>
+                )}
 
-              {/* Explanation */}
-              {result.explanation && (
-                <div className="glass-card rounded-2xl p-4 border-violet-500/30">
-                  <div className="text-[10px] font-semibold text-violet-300 tracking-wider mb-2">💡 AI EXPLANATION</div>
-                  <p className="text-xs text-slate-300 leading-relaxed">{result.explanation}</p>
-                </div>
-              )}
+                {resultTab === "improvements" && (
+                  <motion.div key="improvements" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+                    {result.improvements?.length > 0 ? (
+                      <div className="glass-card rounded-2xl p-4">
+                        <div className="text-[10px] font-bold text-emerald-400 tracking-wider mb-3">✓ IMPROVEMENTS APPLIED</div>
+                        <div className="space-y-2">
+                          {result.improvements.map((imp, i) => (
+                            <div key={i} className="flex gap-2.5 p-2.5 rounded-xl bg-emerald-500/5 border border-emerald-500/15">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0 mt-0.5" />
+                              <span className="text-[12px] text-slate-200 leading-relaxed">{imp}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="glass-card rounded-2xl p-8 text-center text-slate-500 text-sm">No improvements data</div>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
-              {/* Actions */}
+              {/* Action buttons */}
               <div className="flex gap-2">
-                <button onClick={exportSql} className="flex-1 py-2.5 border border-violet-500/30 hover:border-violet-500/50 text-violet-300 text-xs font-medium rounded-xl transition-colors flex items-center justify-center gap-1.5">
-                  <Download className="w-3.5 h-3.5"/>Export SQL
+                {result.id && (
+                  <div className="flex-1">
+                    <ExportMenu
+                      label="Export"
+                      align="left"
+                      className="w-full py-2.5 border border-violet-500/30 hover:border-violet-500/50 text-violet-300 text-xs font-semibold rounded-xl transition-colors flex items-center justify-center gap-1.5"
+                      href={format => `/api/export?id=${result.id}&format=${format}`}
+                    />
+                  </div>
+                )}
+                <button onClick={() => copy(result.optimizedQuery)}
+                  className="flex-1 py-2.5 bg-violet-500/15 hover:bg-violet-500/25 border border-violet-500/30 text-violet-300 text-xs font-semibold rounded-xl transition-colors flex items-center justify-center gap-1.5">
+                  <Copy className="w-3.5 h-3.5" /> Copy Optimized SQL
                 </button>
-                <button onClick={() => copy(result.optimizedQuery)} className="flex-1 py-2.5 bg-violet-500/15 border border-violet-500/30 text-violet-300 text-xs font-medium rounded-xl transition-colors flex items-center justify-center gap-1.5">
-                  <Copy className="w-3.5 h-3.5"/>Copy Optimized
+                <button onClick={() => { setResult(null); setQuery(""); }}
+                  className="px-4 py-2.5 border border-violet-500/15 text-slate-500 hover:text-slate-300 text-xs rounded-xl transition-colors">
+                  Reset
                 </button>
               </div>
             </motion.div>
@@ -326,7 +488,7 @@ function OptimizerContent() {
 
 export default function OptimizerPage() {
   return (
-    <Suspense fallback={<div className="p-8 text-sm text-slate-500">Loading optimizer…</div>}>
+    <Suspense fallback={<div className="p-8 text-sm text-slate-500 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" />Loading optimizer…</div>}>
       <OptimizerContent />
     </Suspense>
   );

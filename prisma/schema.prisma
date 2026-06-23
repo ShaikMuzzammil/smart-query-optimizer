@@ -77,6 +77,10 @@ model Query {
   complexityBefore String?
   complexityAfter  String?
   estimatedSpeedup String?
+  estimatedRowsScanned String?
+  costScore        Int?
+  readabilityNotes String?  @db.Text
+  engine           String?  @default("claude")
   queryType        String   @default("SELECT")
   explanation      String?  @db.Text
   isFavorited      Boolean  @default(false)

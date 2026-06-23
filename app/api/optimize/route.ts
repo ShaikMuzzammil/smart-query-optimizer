@@ -1,7 +1,7 @@
 // app/api/optimize/route.ts
 import { NextResponse } from "next/server";
 import { getAuth } from "@/lib/auth";
-import { optimizeSQL, AiParseError } from "@/lib/anthropic";
+import { optimizeSQL, AiParseError, AiUnavailableError } from "@/lib/ai-engine";
 import { db } from "@/lib/db";
 import { z } from "zod";
 
@@ -38,7 +38,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // Call AI optimization engine
+    // Call AI optimization engine (Claude primary, Gemini automatic fallback)
     const start = Date.now();
     let result;
     try {
@@ -51,6 +51,13 @@ export async function POST(req: Request) {
           { status: 502 }
         );
       }
+      if (aiErr instanceof AiUnavailableError) {
+        console.error("[OPTIMIZE] No AI provider configured", aiErr);
+        return NextResponse.json(
+          { error: "AI engine is not configured correctly (missing or invalid API key). Contact the site admin." },
+          { status: 500 }
+        );
+      }
       const msg = aiErr instanceof Error ? aiErr.message : "";
       if (msg.toLowerCase().includes("api key") || msg.toLowerCase().includes("authentication")) {
         return NextResponse.json(
@@ -60,7 +67,7 @@ export async function POST(req: Request) {
       }
       if (msg.toLowerCase().includes("rate") || msg.toLowerCase().includes("overloaded") || msg.toLowerCase().includes("429")) {
         return NextResponse.json(
-          { error: "The AI engine is busy right now — please try again in a few seconds." },
+          { error: "All configured AI engines are busy right now — please try again in a few seconds." },
           { status: 503 }
         );
       }
@@ -94,6 +101,10 @@ export async function POST(req: Request) {
         complexityBefore: result.complexityBefore,
         complexityAfter: result.complexityAfter,
         estimatedSpeedup: result.estimatedSpeedup,
+        estimatedRowsScanned: result.estimatedRowsScanned,
+        costScore: result.costScore,
+        readabilityNotes: result.readabilityNotes,
+        engine: result.engine,
         queryType: result.queryType,
         explanation: result.explanation,
         executionTimeMs,
