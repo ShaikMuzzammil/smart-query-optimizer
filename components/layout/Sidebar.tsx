@@ -5,16 +5,18 @@ import { usePathname } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import { motion } from "framer-motion";
 import {
-  LayoutDashboard, Zap, History, BarChart3, Settings, LogOut, Sparkles, BookOpen,
+  LayoutDashboard, Zap, History, BarChart3, Settings, LogOut, BookOpen,
+  MessageSquare, Brain,
 } from "lucide-react";
 
 const NAV = [
-  { href: "/dashboard",  icon: LayoutDashboard, label: "Dashboard" },
-  { href: "/optimizer",  icon: Zap,             label: "Optimizer" },
-  { href: "/examples",   icon: BookOpen,        label: "Examples" },
-  { href: "/history",    icon: History,         label: "History" },
-  { href: "/analytics",  icon: BarChart3,       label: "Analytics" },
-  { href: "/settings",   icon: Settings,        label: "Settings" },
+  { href: "/dashboard",  icon: LayoutDashboard, label: "Dashboard",   badge: null },
+  { href: "/optimizer",  icon: Zap,             label: "Optimizer",   badge: null },
+  { href: "/nl2sql",     icon: Brain,           label: "NL to SQL",   badge: "NEW" },
+  { href: "/examples",   icon: BookOpen,        label: "Examples",    badge: "99" },
+  { href: "/history",    icon: History,         label: "History",     badge: null },
+  { href: "/analytics",  icon: BarChart3,       label: "Analytics",   badge: null },
+  { href: "/settings",   icon: Settings,        label: "Settings",    badge: null },
 ];
 
 export function Sidebar() {
@@ -25,16 +27,17 @@ export function Sidebar() {
     <aside className="w-60 flex-shrink-0 h-screen sticky top-0 border-r border-violet-500/15 bg-[#040410]/95 backdrop-blur-xl flex flex-col">
       {/* Logo */}
       <div className="h-16 flex items-center gap-2.5 px-5 border-b border-violet-500/15">
-        <div className="w-8 h-8 rounded-lg bg-violet-500/20 border border-violet-500/40 flex items-center justify-center">
-          <Zap className="w-4 h-4 text-violet-400"/>
+        <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-500 to-purple-700 flex items-center justify-center shadow-lg shadow-violet-500/30">
+          <Zap className="w-4 h-4 text-white"/>
         </div>
         <div>
-          <div className="text-sm font-bold leading-tight">Smart Query <span className="text-violet-400">Optimizer</span></div>
+          <div className="text-sm font-black leading-tight">Query<span className="text-violet-400">Forge</span></div>
+          <div className="text-[9px] text-slate-500">AI Database Platform</div>
         </div>
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 px-3 py-4 space-y-1">
+      <nav className="flex-1 px-3 py-4 space-y-0.5">
         {NAV.map(item => {
           const active = pathname === item.href;
           const Icon = item.icon;
@@ -42,12 +45,18 @@ export function Sidebar() {
             <Link key={item.href} href={item.href} className="relative block">
               {active && (
                 <motion.div layoutId="sidebar-active"
-                  className="absolute inset-0 bg-violet-500/15 border border-violet-500/30 rounded-lg"
+                  className="absolute inset-0 bg-violet-500/15 border border-violet-500/30 rounded-xl"
                   transition={{ type: "spring", duration: 0.4 }}/>
               )}
-              <div className={`relative flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors
-                ${active ? "text-violet-300 font-medium" : "text-slate-400 hover:text-slate-200"}`}>
-                <Icon className="w-4 h-4"/>{item.label}
+              <div className={`relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-colors
+                ${active ? "text-violet-300 font-semibold" : "text-slate-400 hover:text-slate-200 hover:bg-violet-500/5"}`}>
+                <Icon className="w-4 h-4 flex-shrink-0"/>
+                <span className="flex-1">{item.label}</span>
+                {item.badge && (
+                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${item.badge === "NEW" ? "bg-violet-500/20 text-violet-300" : "bg-slate-500/20 text-slate-400"}`}>
+                    {item.badge}
+                  </span>
+                )}
               </div>
             </Link>
           );
@@ -57,8 +66,8 @@ export function Sidebar() {
       {/* Quick optimize CTA */}
       <div className="px-3 pb-3">
         <Link href="/optimizer"
-          className="flex items-center justify-center gap-2 py-2.5 bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium rounded-lg transition-all glow-violet">
-          <Sparkles className="w-4 h-4"/> Quick Optimize
+          className="flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-violet-600 to-purple-700 hover:from-violet-500 hover:to-purple-600 text-white text-sm font-semibold rounded-xl transition-all glow-violet shadow-lg shadow-violet-500/20">
+          <Zap className="w-4 h-4"/> New Optimization
         </Link>
       </div>
 

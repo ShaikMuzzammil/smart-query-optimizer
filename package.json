@@ -1,5 +1,5 @@
 {
-  "name": "smart-query-optimizer",
+  "name": "queryforge",
   "version": "2.0.0",
   "private": true,
   "scripts": {

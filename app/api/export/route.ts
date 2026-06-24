@@ -40,7 +40,7 @@ export async function GET(req: Request) {
         return new NextResponse(csv, {
           headers: {
             "Content-Type": "text/csv; charset=utf-8",
-            "Content-Disposition": `attachment; filename="smart-query-optimizer-history.csv"`,
+            "Content-Disposition": `attachment; filename="queryforge-history.csv"`,
           },
         });
       }
@@ -49,7 +49,7 @@ export async function GET(req: Request) {
         return new NextResponse(Buffer.from(pdfBytes), {
           headers: {
             "Content-Type": "application/pdf",
-            "Content-Disposition": `attachment; filename="smart-query-optimizer-history.pdf"`,
+            "Content-Disposition": `attachment; filename="queryforge-history.pdf"`,
           },
         });
       }
@@ -114,7 +114,7 @@ export async function GET(req: Request) {
     const indexRecs = Array.isArray(query.indexRecs) ? query.indexRecs as string[] : [];
 
     const sql = [
-      `-- Smart Query Optimizer Export`,
+      `-- QueryForge Export`,
       `-- Title: ${query.title}`,
       `-- Domain: ${query.domain}`,
       `-- Performance Gain: +${query.performanceGain}%`,

@@ -46,7 +46,7 @@ const config: Config = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
-        // Custom Smart Query Optimizer colors
+        // Custom QueryForge colors
         violet: {
           50: "#f5f3ff",
           100: "#ede9fe",

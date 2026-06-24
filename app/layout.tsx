@@ -7,22 +7,22 @@ const inter = { variable: "" };
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"),
-  title: { default: "Smart Query Optimizer", template: "%s | Smart Query Optimizer" },
-  description: "AI-powered SQL query optimizer with real-time analysis, Neon PostgreSQL, and an advanced AI engine. Detect N+1 queries, missing indexes, and anti-patterns instantly.",
-  keywords: ["SQL optimizer", "query optimization", "AI", "PostgreSQL", "database performance", "AI optimization"],
-  authors: [{ name: "Smart Query Optimizer" }],
+  title: { default: "QueryForge — AI Database Performance Platform", template: "%s | QueryForge" },
+  description: "Production-grade SQL optimization powered by dual AI engines. Detect N+1 anti-patterns, get index recommendations, NL-to-SQL conversion, PII redaction, and export in 4 formats.",
+  keywords: ["SQL optimizer", "query optimization", "AI database", "PostgreSQL performance", "NL2SQL", "database engineering"],
+  authors: [{ name: "QueryForge" }],
   openGraph: {
     type: "website",
     locale: "en_US",
     url: process.env.NEXT_PUBLIC_APP_URL,
-    title: "Smart Query Optimizer — AI SQL Optimization",
-    description: "Optimize SQL queries with advanced AI. Detect issues, get index recommendations, and reduce query complexity in seconds.",
-    siteName: "Smart Query Optimizer",
+    title: "QueryForge — AI Database Performance Platform",
+    description: "Optimize SQL with AI. Detect anti-patterns, get index recommendations, convert natural language to SQL, and export anywhere.",
+    siteName: "QueryForge",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Smart Query Optimizer — AI SQL Optimization",
-    description: "AI-powered SQL optimization with real-time analysis and Neon PostgreSQL.",
+    title: "QueryForge — AI Database Performance Platform",
+    description: "Production-grade SQL optimization with dual AI engine (Claude + Gemini), live scanner, and full history.",
   },
   robots: { index: true, follow: true },
 };
