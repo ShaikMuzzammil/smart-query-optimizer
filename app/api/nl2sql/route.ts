@@ -7,8 +7,9 @@ import { z } from "zod";
 export const dynamic = "force-dynamic";
 
 const schema = z.object({
-  prompt:  z.string().min(5).max(2000),
-  dialect: z.string().optional().default("PostgreSQL"),
+  prompt:        z.string().min(5).max(2000),
+  dialect:       z.string().optional().default("PostgreSQL"),
+  schemaContext: z.string().optional(),
 });
 
 export async function POST(req: Request) {
@@ -22,15 +23,15 @@ export async function POST(req: Request) {
     if (!parsed.success)
       return NextResponse.json({ error: "Please describe what SQL you need (at least 5 characters)." }, { status: 400 });
 
-    const { prompt, dialect } = parsed.data;
-    const result = await nl2sql(prompt, dialect);
+    const { prompt, dialect, schemaContext } = parsed.data;
+    const result = await nl2sql(prompt, dialect, schemaContext);
     return NextResponse.json(result);
   } catch (err) {
     if (err instanceof AiUnavailableError)
-      return NextResponse.json({ error: err.message }, { status: 503 });
+      return NextResponse.json({ error: "Conversion service is temporarily unavailable. Please try again." }, { status: 503 });
     if (err instanceof AiParseError)
-      return NextResponse.json({ error: "AI returned unreadable response — try again." }, { status: 502 });
+      return NextResponse.json({ error: "Conversion returned an unexpected format — try again." }, { status: 502 });
     console.error("[NL2SQL]", err);
-    return NextResponse.json({ error: "NL2SQL failed — please try again." }, { status: 500 });
+    return NextResponse.json({ error: "Conversion failed — please try again." }, { status: 500 });
   }
 }

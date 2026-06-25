@@ -46,7 +46,7 @@ const config: Config = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
-        // Custom QueryForge colors
+        // Custom platform colors
         violet: {
           50: "#f5f3ff",
           100: "#ede9fe",

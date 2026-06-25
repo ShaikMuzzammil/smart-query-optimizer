@@ -23,7 +23,7 @@ export default function LoginPage() {
     try {
       const res = await signIn("credentials", { email, password, redirect: false });
       if (res?.error) { setError("Incorrect email or password."); setNoAccount(true); setLoading(false); return; }
-      toast.success("Welcome back to QueryForge!");
+      toast.success("Welcome back!");
       router.push("/dashboard");
     } catch { setError("Something went wrong. Please try again."); setLoading(false); }
   }
@@ -49,7 +49,7 @@ export default function LoginPage() {
             <span className="font-black text-lg">Query<span className="text-violet-400">Forge</span></span>
           </Link>
           <h1 className="text-2xl font-black mb-2">Welcome back</h1>
-          <p className="text-slate-400 text-sm">Sign in to your QueryForge account</p>
+          <p className="text-slate-400 text-sm">Sign in to your Smart Query Optimizer account</p>
         </div>
 
         <div className="glass-card rounded-2xl p-8">

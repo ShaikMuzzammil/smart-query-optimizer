@@ -1,17 +1,34 @@
 "use client";
-// app/(dashboard)/nl2sql/page.tsx — Natural Language to SQL converter
-import { useState, useCallback } from "react";
+// app/(dashboard)/nl2sql/page.tsx
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { SqlBlock } from "@/components/optimizer/SqlBlock";
 import {
-  Brain, Loader2, Zap, Copy, ArrowRight, Sparkles, ChevronRight,
-  Globe, CheckCircle2, AlertCircle,
+  Brain, Globe, Sparkles, Copy, ChevronRight, ArrowRight,
+  RefreshCw, Send, AlertCircle, CheckCircle2, Database, Info,
+  Terminal, Code2,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 const DIALECTS = ["PostgreSQL","MySQL","SQLite","BigQuery","MS SQL Server"] as const;
-type Dialect = typeof DIALECTS[number];
+
+const EXAMPLES = [
+  { domain:"E-Commerce",  prompt:"Show the top 10 customers by total spend last month, grouped by country" },
+  { domain:"Healthcare",  prompt:"Find all patients who had lab tests flagged as abnormal in the last 30 days" },
+  { domain:"Finance",     prompt:"Calculate monthly revenue per product category for Q1 2024, ordered by revenue" },
+  { domain:"HR",          prompt:"List employees with no performance review in the past 6 months, by department" },
+  { domain:"SaaS",        prompt:"Show daily active users for the past 14 days with 7-day rolling average" },
+  { domain:"Logistics",   prompt:"Find all shipments delayed more than 3 days with carrier and route info" },
+  { domain:"Education",   prompt:"List students whose GPA dropped more than 0.5 points between last two semesters" },
+  { domain:"Gaming",      prompt:"Top 20 players by total score in tournaments held this year" },
+];
+
+const SEVERITY_COLORS: Record<string,string> = {
+  critical:"bg-rose-500/15 text-rose-300 border-rose-500/25",
+  high:    "bg-orange-500/15 text-orange-300 border-orange-500/25",
+  medium:  "bg-amber-500/15 text-amber-300 border-amber-500/25",
+  low:     "bg-blue-500/15 text-blue-300 border-blue-500/25",
+};
 
 interface NL2SQLResult {
   sql: string;
@@ -21,237 +38,304 @@ interface NL2SQLResult {
   dialect: string;
 }
 
-const EXAMPLES = [
-  { domain:"E-Commerce",    icon:"🛒", prompt:"Show me the top 10 products by total revenue this year, including product name and category" },
-  { domain:"Healthcare",    icon:"🏥", prompt:"Find all patients who had more than 3 appointments in the last 30 days and list their names and appointment count" },
-  { domain:"HR & Payroll",  icon:"👥", prompt:"Get the average salary by department, sorted from highest to lowest, for employees hired in the last 2 years" },
-  { domain:"SaaS Analytics",icon:"📊", prompt:"Show daily active users for the past 14 days with the count of unique events per day" },
-  { domain:"Banking",       icon:"🏦", prompt:"Find all accounts with a balance below 100 that had more than 5 transactions last month" },
-  { domain:"Gaming",        icon:"🎮", prompt:"Get the top 20 players on the leaderboard for season 4 with their username, score, and rank" },
-];
-
 export default function NL2SQLPage() {
   const router = useRouter();
   const [prompt, setPrompt]   = useState("");
-  const [dialect, setDialect] = useState<Dialect>("PostgreSQL");
+  const [dialect, setDialect] = useState<string>("PostgreSQL");
   const [result, setResult]   = useState<NL2SQLResult | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError]     = useState("");
+  const [error, setError]     = useState<string | null>(null);
+  const [schemaCtx, setSchemaCtx] = useState<string | null>(null);
+  const [copied, setCopied]   = useState(false);
 
-  const convert = useCallback(async () => {
-    if (!prompt.trim() || prompt.trim().length < 5) { toast.warning("Describe what SQL you need first"); return; }
-    setLoading(true); setError(""); setResult(null);
+  // Load schema context from Schema Vault if available
+  useEffect(() => {
+    const ctx = sessionStorage.getItem("sqo_schema_context");
+    if (ctx) setSchemaCtx(ctx);
+  }, []);
+
+  const convert = async () => {
+    if (!prompt.trim() || loading) return;
+    setLoading(true);
+    setError(null);
+    setResult(null);
     try {
       const res = await fetch("/api/nl2sql", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: prompt.trim(), dialect }),
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt, dialect, schemaContext: schemaCtx ?? undefined }),
       });
       const data = await res.json();
-      if (!res.ok) { setError(data.error ?? "Conversion failed — please try again"); return; }
-      setResult(data);
-      toast.success(`✓ Converted to ${dialect} SQL`);
-    } catch { setError("Network error — please check your connection"); }
-    finally { setLoading(false); }
-  }, [prompt, dialect]);
+      if (!res.ok || data.error) {
+        setError(data.error ?? "Conversion failed — please try again.");
+        toast.error("Conversion failed");
+      } else {
+        setResult(data);
+        toast.success("SQL generated successfully");
+      }
+    } catch {
+      setError("Network error — please try again.");
+      toast.error("Network error");
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  const copy = (text: string) => { navigator.clipboard.writeText(text); toast.success("Copied!"); };
+  const copySQL = () => {
+    if (!result?.sql) return;
+    navigator.clipboard.writeText(result.sql);
+    setCopied(true);
+    toast.success("SQL copied");
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   const sendToOptimizer = () => {
     if (!result?.sql) return;
-    sessionStorage.setItem("qf_nl2sql_sql", result.sql);
-    router.push("/optimizer?from=nl2sql");
+    sessionStorage.setItem("sqo_nl2sql_result", result.sql);
+    sessionStorage.setItem("sqo_nl2sql_dialect", dialect);
+    toast.success("Loaded in Optimizer");
+    router.push("/optimizer");
+  };
+
+  const sendToPlayground = () => {
+    if (!result?.sql) return;
+    sessionStorage.setItem("sqo_playground_sql", result.sql);
+    toast.success("Loaded in Playground");
+    router.push("/playground");
   };
 
   return (
-    <div className="p-6 lg:p-8 max-w-[1200px] mx-auto">
+    <div className="p-6 lg:p-8 max-w-[1400px] mx-auto">
       {/* Header */}
-      <div className="mb-8">
-        <div className="flex items-center gap-2 mb-2">
-          <div className="w-8 h-8 rounded-xl bg-violet-500/15 border border-violet-500/30 flex items-center justify-center">
-            <Brain className="w-4 h-4 text-violet-400"/>
-          </div>
+      <div className="mb-7">
+        <div className="flex items-center gap-2 mb-1">
           <h1 className="text-2xl font-black">Natural Language to SQL</h1>
-          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-300 border border-violet-500/25">NEW</span>
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-violet-500/20 text-violet-300">NEW</span>
         </div>
         <p className="text-slate-400 text-sm">
-          Describe what data you need in plain English — get production-ready SQL instantly. Then send it to the Optimizer for further analysis.
+          Describe what data you need in plain English — get production-ready SQL for any dialect
         </p>
       </div>
 
-      <div className="grid lg:grid-cols-2 gap-6">
-
-        {/* ── Left: Input ── */}
+      <div className="grid lg:grid-cols-[1fr_420px] gap-5">
+        {/* Left: input + result */}
         <div className="space-y-4">
-          {/* Dialect selector */}
-          <div className="glass-card rounded-2xl p-4">
-            <div className="text-[10px] font-bold text-slate-500 tracking-wider mb-3 flex items-center gap-1.5">
-              <Globe className="w-3 h-3"/> TARGET SQL DIALECT
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {DIALECTS.map(d => (
-                <button key={d} onClick={() => setDialect(d)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all border ${dialect === d ? "bg-violet-600 text-white border-violet-500" : "border-violet-500/20 text-slate-400 hover:text-white hover:border-violet-500/40"}`}>
-                  {d}
-                </button>
-              ))}
-            </div>
-          </div>
 
-          {/* Prompt input */}
+          {/* Schema context banner */}
+          {schemaCtx && (
+            <motion.div initial={{opacity:0}} animate={{opacity:1}}
+              className="flex items-center gap-3 px-4 py-3 bg-emerald-500/8 border border-emerald-500/20 rounded-xl">
+              <Database className="w-4 h-4 text-emerald-400 flex-shrink-0"/>
+              <div className="flex-1 min-w-0">
+                <div className="text-xs font-semibold text-emerald-300">Schema context loaded from Schema Vault</div>
+                <div className="text-[10px] text-slate-500">Your exact table/column names will be used — no hallucinations</div>
+              </div>
+              <button onClick={()=>setSchemaCtx(null)} className="text-[10px] text-slate-500 hover:text-slate-300 flex-shrink-0">Remove</button>
+            </motion.div>
+          )}
+
+          {/* Input card */}
           <div className="glass-card rounded-2xl p-5">
-            <div className="text-[10px] font-bold text-slate-500 tracking-wider mb-3 flex items-center gap-1.5">
-              <Brain className="w-3 h-3"/> DESCRIBE WHAT YOU NEED
+            {/* Dialect picker */}
+            <div className="mb-4">
+              <div className="text-[10px] font-bold text-slate-500 tracking-wider mb-2 flex items-center gap-1.5">
+                <Globe className="w-3 h-3"/>TARGET SQL DIALECT
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {DIALECTS.map(d => (
+                  <button key={d} onClick={() => setDialect(d)}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-all ${
+                      dialect === d
+                        ? "bg-violet-500/20 border-violet-500/50 text-violet-200"
+                        : "border-violet-500/15 text-slate-400 hover:text-slate-200 hover:border-violet-500/25"
+                    }`}>
+                    {d}
+                  </button>
+                ))}
+              </div>
             </div>
-            <textarea
-              value={prompt}
-              onChange={e => setPrompt(e.target.value)}
-              placeholder={"Describe your data request in plain English…\n\nExamples:\n• Show me top 10 customers by revenue this month\n• Find all users who haven't logged in for 30 days\n• Get average order value by country for Q4 2024"}
-              className="w-full min-h-[180px] bg-[#020208] border border-violet-500/20 rounded-xl p-4 text-sm text-slate-200 placeholder:text-slate-600 outline-none focus:border-violet-500/50 transition-colors resize-y leading-relaxed"
-            />
-            <div className="flex items-center justify-between mt-2">
-              <span className="text-[10px] text-slate-600">{prompt.length} chars · {dialect}</span>
-              <button onClick={convert} disabled={loading || prompt.trim().length < 5}
-                className="px-6 py-2.5 bg-gradient-to-r from-violet-600 to-purple-700 hover:from-violet-500 hover:to-purple-600 disabled:opacity-40 text-white text-sm font-bold rounded-xl transition-all flex items-center gap-2 glow-violet">
-                {loading ? <><Loader2 className="w-4 h-4 animate-spin"/> Converting…</> : <><Brain className="w-4 h-4"/> Convert to SQL</>}
-              </button>
+
+            {/* Prompt input */}
+            <div className="mb-4">
+              <div className="text-[10px] font-bold text-slate-500 tracking-wider mb-2 flex items-center gap-1.5">
+                <Brain className="w-3 h-3"/>DESCRIBE WHAT YOU NEED
+              </div>
+              <textarea
+                value={prompt}
+                onChange={e => setPrompt(e.target.value)}
+                onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") convert(); }}
+                placeholder={`Describe your query in plain English...\n\nExamples:\n• "Show top 10 customers by revenue last month"\n• "Find products with low stock below reorder point"\n• "Calculate weekly active users for the last 4 weeks"\n\nTip: ⌘+Enter to convert`}
+                className="w-full min-h-[160px] bg-[#020208] border border-violet-500/20 focus:border-violet-500/50 rounded-xl p-4 text-sm text-slate-200 placeholder:text-slate-600 outline-none resize-y transition-colors leading-relaxed"
+              />
+              <div className="flex items-center justify-between mt-2">
+                <span className="text-[10px] text-slate-600">{prompt.length} chars · {dialect}</span>
+                <kbd className="text-[9px] px-1.5 py-0.5 bg-violet-500/10 border border-violet-500/20 rounded font-mono text-violet-400">⌘↵</kbd>
+              </div>
             </div>
+
+            <button onClick={convert} disabled={!prompt.trim() || loading}
+              className="w-full flex items-center justify-center gap-2 py-3.5 bg-gradient-to-r from-violet-600 to-purple-700 hover:from-violet-500 hover:to-purple-600 disabled:opacity-40 text-white font-bold rounded-xl transition-all shadow-lg shadow-violet-500/20">
+              {loading
+                ? <><RefreshCw className="w-4 h-4 animate-spin"/>Converting…</>
+                : <><Sparkles className="w-4 h-4"/>Convert to SQL</>
+              }
+            </button>
           </div>
 
-          {/* Error */}
+          {/* Error state */}
           <AnimatePresence>
             {error && (
-              <motion.div initial={{opacity:0,y:-8}} animate={{opacity:1,y:0}} exit={{opacity:0}}
-                className="glass-card rounded-2xl p-4 border-rose-500/25">
-                <div className="flex gap-2 items-start">
-                  <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0 mt-0.5"/>
-                  <p className="text-sm text-rose-300">{error}</p>
+              <motion.div initial={{opacity:0,y:8}} animate={{opacity:1,y:0}} exit={{opacity:0}}
+                className="flex items-start gap-3 p-4 bg-amber-500/8 border border-amber-500/20 rounded-xl">
+                <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5"/>
+                <div>
+                  <div className="text-sm font-semibold text-amber-200">Conversion Unavailable</div>
+                  <p className="text-xs text-slate-400 mt-0.5">The conversion service is temporarily unavailable. Please try again in a moment.</p>
                 </div>
+                <button onClick={convert} disabled={loading}
+                  className="ml-auto flex-shrink-0 flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-violet-400 border border-violet-500/25 rounded-lg hover:bg-violet-500/8 transition-colors">
+                  <RefreshCw className="w-3 h-3"/>Retry
+                </button>
               </motion.div>
             )}
           </AnimatePresence>
 
+          {/* Result */}
+          <AnimatePresence>
+            {result && (
+              <motion.div initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} exit={{opacity:0}}
+                className="glass-card rounded-2xl overflow-hidden">
+                {/* Result header */}
+                <div className="flex items-center gap-3 px-5 py-4 border-b border-violet-500/10 bg-emerald-500/5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400"/>
+                  <span className="text-sm font-bold text-emerald-200">SQL Generated</span>
+                  <span className="text-[10px] text-slate-500 ml-1">{result.dialect}</span>
+                  <div className="ml-auto flex gap-2">
+                    <button onClick={copySQL}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border transition-all ${
+                        copied ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300" : "border-violet-500/25 text-slate-300 hover:bg-violet-500/8"
+                      }`}>
+                      {copied ? <><CheckCircle2 className="w-3 h-3"/>Copied</> : <><Copy className="w-3 h-3"/>Copy SQL</>}
+                    </button>
+                    <button onClick={sendToOptimizer}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-violet-600/80 hover:bg-violet-600 text-white rounded-lg transition-colors">
+                      <Send className="w-3 h-3"/>Optimize
+                    </button>
+                    <button onClick={sendToPlayground}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold border border-amber-500/25 text-amber-300 hover:bg-amber-500/8 rounded-lg transition-colors">
+                      <Terminal className="w-3 h-3"/>Playground
+                    </button>
+                  </div>
+                </div>
+
+                {/* SQL */}
+                <div className="p-5">
+                  <div className="text-[10px] font-bold text-slate-500 tracking-wider mb-2 flex items-center gap-1.5">
+                    <Code2 className="w-3 h-3"/>GENERATED SQL
+                  </div>
+                  <pre className="text-xs font-mono text-emerald-300/90 leading-6 whitespace-pre-wrap bg-[#020208] border border-emerald-500/10 rounded-xl p-4 overflow-auto max-h-60">
+                    {result.sql}
+                  </pre>
+                </div>
+
+                {/* Explanation */}
+                {result.explanation && (
+                  <div className="px-5 pb-4">
+                    <div className="text-[10px] font-bold text-slate-500 tracking-wider mb-2">WHAT IT DOES</div>
+                    <p className="text-xs text-slate-400 leading-relaxed">{result.explanation}</p>
+                  </div>
+                )}
+
+                {/* Assumptions + tables */}
+                <div className="grid sm:grid-cols-2 gap-4 px-5 pb-5">
+                  {result.assumptions?.length > 0 && (
+                    <div>
+                      <div className="text-[10px] font-bold text-slate-500 tracking-wider mb-2 flex items-center gap-1.5">
+                        <Info className="w-3 h-3"/>ASSUMPTIONS
+                      </div>
+                      <ul className="space-y-1">
+                        {result.assumptions.map((a, i) => (
+                          <li key={i} className="text-[11px] text-slate-400 flex items-start gap-1.5">
+                            <span className="text-slate-600 mt-0.5">·</span>{a}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {result.tablesNeeded?.length > 0 && (
+                    <div>
+                      <div className="text-[10px] font-bold text-slate-500 tracking-wider mb-2 flex items-center gap-1.5">
+                        <Database className="w-3 h-3"/>TABLES NEEDED
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {result.tablesNeeded.map(t => (
+                          <span key={t} className="text-[11px] font-mono px-2 py-0.5 bg-violet-500/10 border border-violet-500/20 rounded text-violet-300">{t}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* Right: examples + tips */}
+        <div className="space-y-4">
+          {/* Tips */}
+          {!schemaCtx && (
+            <div className="glass-card rounded-2xl p-5 border border-violet-500/15">
+              <div className="flex items-center gap-2 mb-3">
+                <Database className="w-4 h-4 text-violet-400"/>
+                <h3 className="text-xs font-bold">Better results with Schema Vault</h3>
+              </div>
+              <p className="text-[11px] text-slate-400 leading-relaxed mb-3">
+                Upload your DDL to Schema Vault and your exact table/column names will be injected — eliminating hallucinated column names.
+              </p>
+              <a href="/schema" className="flex items-center gap-1.5 text-xs text-violet-400 hover:text-violet-300 font-semibold transition-colors">
+                Open Schema Vault <ArrowRight className="w-3.5 h-3.5"/>
+              </a>
+            </div>
+          )}
+
           {/* Example prompts */}
-          <div className="glass-card rounded-2xl p-4">
+          <div className="glass-card rounded-2xl p-5">
             <div className="text-[10px] font-bold text-slate-500 tracking-wider mb-3 flex items-center gap-1.5">
-              <Sparkles className="w-3 h-3"/> EXAMPLE PROMPTS
+              <Sparkles className="w-3 h-3"/>EXAMPLE PROMPTS
             </div>
             <div className="space-y-2">
-              {EXAMPLES.map(ex => (
-                <button key={ex.prompt} onClick={() => { setPrompt(ex.prompt); toast.message(`Loaded: ${ex.domain}`); }}
-                  className="w-full flex items-start gap-3 px-3 py-2.5 bg-violet-500/5 hover:bg-violet-500/10 border border-violet-500/10 rounded-xl text-left transition-colors group">
-                  <span className="text-base flex-shrink-0">{ex.icon}</span>
-                  <div className="min-w-0">
-                    <div className="text-[10px] text-violet-400 mb-0.5">{ex.domain}</div>
-                    <div className="text-[11px] text-slate-300 group-hover:text-white transition-colors leading-relaxed line-clamp-2">{ex.prompt}</div>
-                  </div>
-                  <ChevronRight className="w-3.5 h-3.5 text-slate-600 group-hover:text-violet-400 flex-shrink-0 mt-1 transition-colors"/>
-                </button>
+              {EXAMPLES.map((ex, i) => (
+                <motion.button key={i} initial={{opacity:0,x:-10}} animate={{opacity:1,x:0}} transition={{delay:i*0.04}}
+                  onClick={() => { setPrompt(ex.prompt); setResult(null); setError(null); }}
+                  className="w-full text-left p-3 rounded-xl border border-violet-500/10 hover:border-violet-500/30 hover:bg-violet-500/5 transition-all group">
+                  <div className="text-[9px] font-bold text-violet-500 tracking-wider mb-0.5">{ex.domain}</div>
+                  <div className="text-[11px] text-slate-400 group-hover:text-slate-200 transition-colors leading-relaxed">{ex.prompt}</div>
+                  <ChevronRight className="w-3 h-3 text-slate-600 group-hover:text-violet-400 mt-1 transition-colors"/>
+                </motion.button>
               ))}
             </div>
           </div>
-        </div>
 
-        {/* ── Right: Result ── */}
-        <div>
-          {!result && !loading ? (
-            <div className="glass-card rounded-2xl p-16 flex flex-col items-center justify-center text-center min-h-[520px] gap-4">
-              <div className="w-20 h-20 rounded-full bg-violet-500/10 border border-violet-500/20 flex items-center justify-center">
-                <Brain className="w-9 h-9 text-violet-400/50"/>
-              </div>
-              <div>
-                <div className="text-lg font-bold mb-2">Ready to Convert</div>
-                <p className="text-sm text-slate-400 max-w-xs leading-relaxed">
-                  Describe what data you need in plain English, pick your SQL dialect, and click Convert.
-                </p>
-              </div>
-              <div className="grid grid-cols-3 gap-3 w-full max-w-sm mt-2">
-                {[["📝","Plain English"],["⚡","SQL Generated"],["🚀","Send to Optimizer"]].map(([icon,label])=>(
-                  <div key={label} className="glass-card rounded-xl p-3 text-center">
-                    <div className="text-xl mb-1">{icon}</div>
-                    <div className="text-[10px] text-slate-500 leading-tight">{label}</div>
+          {/* Workflow */}
+          <div className="glass-card rounded-2xl p-5">
+            <div className="text-[10px] font-bold text-slate-500 tracking-wider mb-3">RECOMMENDED WORKFLOW</div>
+            <div className="space-y-3">
+              {[
+                { n:"1", label:"Schema Vault", desc:"Upload DDL for context" },
+                { n:"2", label:"NL to SQL",    desc:"Describe your query" },
+                { n:"3", label:"Optimizer",    desc:"Optimize the SQL" },
+                { n:"4", label:"Playground",   desc:"Test the result" },
+              ].map(s => (
+                <div key={s.n} className="flex items-center gap-3">
+                  <div className="w-6 h-6 rounded-full bg-violet-500/20 border border-violet-500/30 flex items-center justify-center text-[10px] font-black text-violet-400 flex-shrink-0">{s.n}</div>
+                  <div>
+                    <div className="text-[11px] font-semibold text-slate-300">{s.label}</div>
+                    <div className="text-[10px] text-slate-600">{s.desc}</div>
                   </div>
-                ))}
-              </div>
-            </div>
-          ) : loading ? (
-            <div className="glass-card rounded-2xl p-16 flex flex-col items-center justify-center min-h-[520px] gap-4">
-              <div className="w-16 h-16 rounded-full bg-violet-500/10 border border-violet-500/20 flex items-center justify-center">
-                <Brain className="w-7 h-7 text-violet-400 animate-pulse"/>
-              </div>
-              <div className="text-center">
-                <div className="font-bold mb-2">Generating {dialect} SQL…</div>
-                <p className="text-sm text-slate-400">AI is converting your request into production-ready SQL</p>
-              </div>
-            </div>
-          ) : result && (
-            <motion.div initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} className="space-y-4">
-
-              {/* SQL result */}
-              <div className="glass-card rounded-2xl p-5">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="text-[10px] font-bold text-emerald-400 tracking-wider flex items-center gap-1.5">
-                    <CheckCircle2 className="w-3.5 h-3.5"/> GENERATED {result.dialect.toUpperCase()} SQL
-                  </div>
-                  <button onClick={() => copy(result.sql)}
-                    className="flex items-center gap-1 text-[10px] text-slate-400 hover:text-violet-300 transition-colors">
-                    <Copy className="w-3 h-3"/> Copy
-                  </button>
                 </div>
-                <SqlBlock sql={result.sql} label={`${result.dialect} SQL`} maxH={320}/>
-              </div>
-
-              {/* Explanation */}
-              {result.explanation && (
-                <div className="glass-card rounded-2xl p-4">
-                  <div className="text-[10px] font-bold text-violet-400 tracking-wider mb-2">💡 EXPLANATION</div>
-                  <p className="text-sm text-slate-300 leading-relaxed">{result.explanation}</p>
-                </div>
-              )}
-
-              {/* Assumptions + Tables */}
-              <div className="grid sm:grid-cols-2 gap-4">
-                {result.assumptions?.length > 0 && (
-                  <div className="glass-card rounded-2xl p-4">
-                    <div className="text-[10px] font-bold text-amber-400 tracking-wider mb-2.5">⚠ ASSUMPTIONS MADE</div>
-                    <div className="space-y-1.5">
-                      {result.assumptions.map((a,i) => (
-                        <div key={i} className="flex gap-2 text-xs text-slate-400">
-                          <span className="text-amber-500 flex-shrink-0">•</span>{a}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {result.tablesNeeded?.length > 0 && (
-                  <div className="glass-card rounded-2xl p-4">
-                    <div className="text-[10px] font-bold text-sky-400 tracking-wider mb-2.5">📋 TABLES NEEDED</div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {result.tablesNeeded.map(t => (
-                        <span key={t} className="text-[11px] px-2 py-1 rounded-lg bg-sky-500/10 border border-sky-500/20 text-sky-300 font-mono">{t}</span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Actions */}
-              <div className="flex gap-3">
-                <button onClick={sendToOptimizer}
-                  className="flex-1 py-3 bg-violet-600 hover:bg-violet-500 text-white text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 glow-violet">
-                  <Zap className="w-4 h-4"/> Send to Optimizer
-                  <ArrowRight className="w-3.5 h-3.5"/>
-                </button>
-                <button onClick={() => copy(result.sql)}
-                  className="px-5 py-3 border border-violet-500/25 hover:border-violet-500/45 text-violet-300 text-sm font-semibold rounded-xl transition-colors flex items-center gap-1.5">
-                  <Copy className="w-4 h-4"/> Copy SQL
-                </button>
-              </div>
-
-              <p className="text-[10px] text-slate-600 text-center">
-                💡 Tip: Send to Optimizer to get index recommendations, complexity analysis, and performance improvement estimates.
-              </p>
-            </motion.div>
-          )}
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     </div>

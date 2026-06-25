@@ -14,7 +14,6 @@ import {
   Zap, Loader2, AlertTriangle, CheckCircle2, Copy, Sparkles, BookOpen,
   HelpCircle, Upload, FileUp, Gauge, Database, Cpu, ChevronRight,
   SplitSquareHorizontal, AlignLeft, AlignRight, Globe, Shield, Brain,
-  ExternalLink, Info,
 } from "lucide-react";
 
 const DIALECTS = ["PostgreSQL","MySQL","SQLite","BigQuery","MS SQL Server"] as const;
@@ -137,7 +136,7 @@ function OptimizerContent() {
       setResult({ ...data, originalQuery: query });
       setResultTab("summary");
       if (data.isValidSql === false) toast.warning("That doesn't look like valid SQL");
-      else toast.success(`⚡ +${data.performanceGain}% estimated gain via ${data.engine ?? "AI"}`);
+      else toast.success(`⚡ +${data.performanceGain}% estimated performance gain`);
     } catch { toast.error("Network error — please check your connection"); }
     finally { setLoading(false); }
   }, [query, dialect]);
@@ -292,31 +291,31 @@ function OptimizerContent() {
 
         {/* ── RIGHT: Result ── */}
         <div>
-          {/* Error state with fix instructions */}
+          {/* Error state — clean, no API references */}
           {result?.error ? (
             <motion.div initial={{opacity:0,y:10}} animate={{opacity:1,y:0}}
-              className="glass-card rounded-2xl p-8 border-rose-500/25 min-h-[400px] flex flex-col gap-4">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-full bg-rose-500/10 border border-rose-500/25 flex items-center justify-center flex-shrink-0">
-                  <AlertTriangle className="w-6 h-6 text-rose-400"/>
-                </div>
-                <div>
-                  <div className="font-bold text-rose-300">AI Engine Error</div>
-                  <p className="text-sm text-slate-400 mt-0.5">{result.error}</p>
-                </div>
+              className="glass-card rounded-2xl p-10 border-amber-500/20 min-h-[400px] flex flex-col items-center justify-center gap-5 text-center">
+              <div className="w-16 h-16 rounded-full bg-amber-500/10 border border-amber-500/25 flex items-center justify-center">
+                <AlertTriangle className="w-7 h-7 text-amber-400"/>
               </div>
-              {result.fix && (
-                <div className="bg-violet-500/8 border border-violet-500/20 rounded-xl p-4">
-                  <div className="text-[10px] font-bold text-violet-400 tracking-wider mb-2 flex items-center gap-1.5">
-                    <Info className="w-3 h-3"/>HOW TO FIX
-                  </div>
-                  <pre className="text-xs text-slate-300 whitespace-pre-wrap leading-relaxed">{result.fix}</pre>
-                  <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 mt-3 text-xs text-violet-400 hover:text-violet-300 transition-colors">
-                    Get free Gemini API key → <ExternalLink className="w-3 h-3"/>
-                  </a>
-                </div>
-              )}
+              <div>
+                <div className="font-bold text-lg text-amber-200 mb-2">Service Temporarily Unavailable</div>
+                <p className="text-sm text-slate-400 max-w-xs leading-relaxed">
+                  The optimization service is temporarily unavailable. This usually resolves in a moment.
+                </p>
+              </div>
+              <button onClick={optimize}
+                className="flex items-center gap-2 px-5 py-2.5 bg-violet-600/80 hover:bg-violet-600 text-white text-sm font-semibold rounded-xl transition-colors">
+                <Zap className="w-4 h-4"/> Try Again
+              </button>
+              <div className="grid grid-cols-3 gap-2 w-full max-w-sm">
+                {randomExamples.slice(0,3).map(ex=>(
+                  <button key={ex.id} onClick={()=>{setQuery(ex.sql);setResult(null);}}
+                    className="text-center p-3 bg-violet-500/5 hover:bg-violet-500/10 border border-violet-500/10 rounded-xl transition-colors">
+                    <div className="text-[10px] text-slate-400 truncate">{ex.domain}</div>
+                  </button>
+                ))}
+              </div>
             </motion.div>
           ) : !result ? (
             /* Empty state */
@@ -393,7 +392,7 @@ function OptimizerContent() {
                       <div className="text-sm font-bold">Optimization Complete</div>
                       <div className="flex items-center gap-1.5">
                         <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-500/10 border border-slate-500/20 text-slate-400 capitalize flex items-center gap-1">
-                          <Cpu className="w-2.5 h-2.5"/>via {result.engine ?? "AI"}
+                          <Cpu className="w-2.5 h-2.5"/>AI Optimized
                         </span>
                         {dialect !== "PostgreSQL" && (
                           <span className="text-[10px] px-2 py-0.5 rounded-full bg-violet-500/10 border border-violet-500/20 text-violet-300 flex items-center gap-1">

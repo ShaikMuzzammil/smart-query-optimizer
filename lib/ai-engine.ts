@@ -1,7 +1,4 @@
-// lib/ai-engine.ts — Dual-provider AI engine with automatic failover
-// Provider priority: if GEMINI_API_KEY is set without ANTHROPIC_API_KEY,
-// Gemini is the sole engine. If both are set, Claude is primary with Gemini
-// as automatic fallback. Either provider alone is sufficient.
+// lib/ai-engine.ts — Dual-provider AI engine (Gemini-first) with automatic failover
 import Anthropic from "@anthropic-ai/sdk";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
@@ -14,8 +11,11 @@ const gemini = process.env.GEMINI_API_KEY
   : null;
 
 // ── System prompt ────────────────────────────────────────────────────────────
-export function buildOptimizeSystem(dialect = "PostgreSQL") {
-  return `You are a world-class SQL query optimizer and database performance expert specializing in ${dialect}.
+export function buildOptimizeSystem(dialect = "PostgreSQL", schemaContext?: string) {
+  const schemaSection = schemaContext
+    ? `\n\nSCHEMA CONTEXT (use these exact table/column names):\n${schemaContext}`
+    : "";
+  return `You are a world-class SQL query optimizer and database performance expert specializing in ${dialect}.${schemaSection}
 
 CRITICAL: Return ONLY valid JSON — no markdown fences, no preamble, no text outside the JSON object.
 
@@ -40,16 +40,19 @@ Return this EXACT structure:
   "costScore": 35,
   "readabilityNotes": "one line on code quality/maintainability",
   "piiDetected": false,
-  "piiFields": []
+  "piiFields": [],
+  "securityAlerts": [],
+  "lintWarnings": []
 }
 
 Rules:
 - performanceGain: integer 1-99
 - costScore: 1-100 (lower = cheaper to execute)
-- If NOT SQL: isValidSql=false, optimizedQuery="", empty arrays, performanceGain=0, explain in "explanation" what was wrong
-- If SQL with syntax errors: isValidSql=true, put corrected SQL in optimizedQuery, list errors as critical issues
-- piiDetected: true if you see string literals that look like real PII (emails, SSNs, card numbers)
-- piiFields: list column names that appear to hold PII
+- securityAlerts: array of strings for SQL injection risks, unbounded selects, etc.
+- lintWarnings: array of strings for style/quality issues
+- If NOT SQL: isValidSql=false, optimizedQuery="", empty arrays, performanceGain=0
+- If SQL with syntax errors: isValidSql=true, corrected SQL in optimizedQuery
+- piiDetected: true if string literals look like real PII (emails, SSNs, card numbers)
 - Always use ${dialect}-specific syntax and functions
 - Never include text outside the single JSON object`;
 }
@@ -100,7 +103,9 @@ export interface OptimizeResult {
   readabilityNotes: string;
   piiDetected: boolean;
   piiFields: string[];
-  engine: "claude" | "gemini";
+  securityAlerts: string[];
+  lintWarnings: string[];
+  engine: "ai" | "engine-a" | "engine-b";
 }
 
 export interface NL2SQLResult {
@@ -126,7 +131,7 @@ function extractJson(text: string): string | null {
   return null;
 }
 
-function parseResult(raw: string, engine: "claude" | "gemini"): OptimizeResult {
+function parseResult(raw: string, engine: OptimizeResult["engine"]): OptimizeResult {
   const cleaned = raw.replace(/```json|```/g, "").trim();
   let parsed: unknown;
   try { parsed = JSON.parse(cleaned); }
@@ -158,6 +163,8 @@ function parseResult(raw: string, engine: "claude" | "gemini"): OptimizeResult {
     readabilityNotes:    p.readabilityNotes ?? "",
     piiDetected:         p.piiDetected ?? false,
     piiFields:           Array.isArray(p.piiFields) ? p.piiFields : [],
+    securityAlerts:      Array.isArray(p.securityAlerts) ? p.securityAlerts : [],
+    lintWarnings:        Array.isArray(p.lintWarnings) ? p.lintWarnings : [],
     engine,
   };
 }
@@ -171,18 +178,8 @@ function isRetryable(msg: string) {
 }
 
 // ── Provider calls ───────────────────────────────────────────────────────────
-async function callClaude(prompt: string, system: string, strict: boolean): Promise<string> {
-  if (!anthropic) throw new AiUnavailableError("ANTHROPIC_API_KEY not configured");
-  const sys = strict ? system + "\n\nIMPORTANT: Respond ONLY with a raw JSON object. No markdown, no prose." : system;
-  const msg = await anthropic.messages.create({
-    model: "claude-sonnet-4-6", max_tokens: 2048,
-    system: sys, messages: [{ role: "user", content: prompt }],
-  });
-  return msg.content.map(c => (c.type === "text" ? c.text : "")).join("");
-}
-
 async function callGemini(prompt: string, system: string, strict: boolean): Promise<string> {
-  if (!gemini) throw new AiUnavailableError("GEMINI_API_KEY not configured. Get a free key at aistudio.google.com/apikey");
+  if (!gemini) throw new AiUnavailableError("Primary AI engine not configured");
   const sys = strict ? system + "\n\nIMPORTANT: Respond ONLY with a raw JSON object. No markdown, no prose." : system;
   const model = gemini.getGenerativeModel({
     model: "gemini-2.0-flash",
@@ -193,25 +190,33 @@ async function callGemini(prompt: string, system: string, strict: boolean): Prom
   return result.response.text();
 }
 
+async function callClaude(prompt: string, system: string, strict: boolean): Promise<string> {
+  if (!anthropic) throw new AiUnavailableError("Fallback AI engine not configured");
+  const sys = strict ? system + "\n\nIMPORTANT: Respond ONLY with a raw JSON object. No markdown, no prose." : system;
+  const msg = await anthropic.messages.create({
+    model: "claude-sonnet-4-6", max_tokens: 2048,
+    system: sys, messages: [{ role: "user", content: prompt }],
+  });
+  return msg.content.map(c => (c.type === "text" ? c.text : "")).join("");
+}
+
 // ── Main optimize function ───────────────────────────────────────────────────
-export async function optimizeSQL(query: string, dialect = "PostgreSQL"): Promise<OptimizeResult> {
-  // PII redaction before sending to any AI
+export async function optimizeSQL(
+  query: string,
+  dialect = "PostgreSQL",
+  schemaContext?: string
+): Promise<OptimizeResult> {
   const { redacted, found } = redactPii(query);
   const prompt = `Analyze this ${dialect} SQL query and return the JSON optimization result:\n\n${redacted}`;
-  const system = buildOptimizeSystem(dialect);
+  const system = buildOptimizeSystem(dialect, schemaContext);
 
-  // Build provider list: Gemini first if no Claude key (or Claude key may be bad)
-  // Both are tried in order; any retryable error (auth, rate limit, overload) moves to next
-  const providers: Array<{ name: "claude" | "gemini"; call: (s: boolean) => Promise<string> }> = [];
-  if (anthropic) providers.push({ name: "claude", call: (s) => callClaude(prompt, system, s) });
-  if (gemini)    providers.push({ name: "gemini", call: (s) => callGemini(prompt, system, s) });
+  // Gemini first, Claude as fallback
+  const providers: Array<{ name: OptimizeResult["engine"]; call: (s: boolean) => Promise<string> }> = [];
+  if (gemini)    providers.push({ name: "engine-b", call: (s) => callGemini(prompt, system, s) });
+  if (anthropic) providers.push({ name: "engine-a", call: (s) => callClaude(prompt, system, s) });
 
   if (!providers.length) {
-    throw new AiUnavailableError(
-      "No AI provider configured. " +
-      "Add GEMINI_API_KEY (free at aistudio.google.com/apikey) " +
-      "and/or ANTHROPIC_API_KEY in Vercel → Settings → Environment Variables, then redeploy."
-    );
+    throw new AiUnavailableError("AI engine not configured. Please contact the administrator.");
   }
 
   let lastErr: unknown = null;
@@ -221,25 +226,26 @@ export async function optimizeSQL(query: string, dialect = "PostgreSQL"): Promis
     try {
       const raw = await call(false);
       const result = parseResult(raw, name);
-      // Restore PII-related annotations to result
       if (found.length > 0) {
         result.piiDetected = true;
         result.piiFields = [...new Set([...result.piiFields, ...found])];
       }
+      // Normalize engine label for display
+      result.engine = "ai";
       return result;
     } catch (err) {
       lastErr = err;
       const msg = err instanceof Error ? err.message : String(err);
       if (!isLast && (err instanceof AiUnavailableError || isRetryable(msg))) {
-        console.warn(`[AI-ENGINE] ${name} failed (${msg.slice(0, 80)}), trying next provider`);
+        console.warn(`[AI-ENGINE] provider ${name} failed, trying next`);
         continue;
       }
-      // Same-provider retry with strict JSON prompt before giving up / failing over
       if (!(err instanceof AiParseError)) {
         try {
           const retryRaw = await call(true);
           const result = parseResult(retryRaw, name);
           if (found.length > 0) { result.piiDetected = true; result.piiFields = [...new Set([...result.piiFields, ...found])]; }
+          result.engine = "ai";
           return result;
         } catch (retryErr) {
           lastErr = retryErr;
@@ -249,11 +255,15 @@ export async function optimizeSQL(query: string, dialect = "PostgreSQL"): Promis
       throw err;
     }
   }
-  throw lastErr instanceof Error ? lastErr : new Error("All AI providers failed");
+  throw lastErr instanceof Error ? lastErr : new Error("Optimization service unavailable");
 }
 
 // ── NL2SQL ───────────────────────────────────────────────────────────────────
-const NL2SQL_SYSTEM = (dialect: string) => `You are an expert ${dialect} developer. Convert natural language queries to optimized ${dialect} SQL.
+const NL2SQL_SYSTEM = (dialect: string, schemaContext?: string) => {
+  const schemaSection = schemaContext
+    ? `\n\nSCHEMA CONTEXT (use these exact table/column names in your SQL):\n${schemaContext}`
+    : "";
+  return `You are an expert ${dialect} developer. Convert natural language queries to optimized ${dialect} SQL.${schemaSection}
 Return ONLY valid JSON, no markdown:
 {
   "sql": "the complete, production-ready ${dialect} SQL query",
@@ -263,17 +273,22 @@ Return ONLY valid JSON, no markdown:
   "dialect": "${dialect}"
 }
 Rules: Use realistic, well-named tables. Write production-quality SQL with proper JOINs, WHERE clauses, aliases.`;
+};
 
-export async function nl2sql(prompt: string, dialect = "PostgreSQL"): Promise<NL2SQLResult> {
+export async function nl2sql(
+  prompt: string,
+  dialect = "PostgreSQL",
+  schemaContext?: string
+): Promise<NL2SQLResult> {
   const userPrompt = `Convert this natural language request to ${dialect} SQL:\n"${prompt}"`;
-  const system = NL2SQL_SYSTEM(dialect);
+  const system = NL2SQL_SYSTEM(dialect, schemaContext);
 
   const providers = [
-    ...(anthropic ? [{ call: (s: boolean) => callClaude(userPrompt, system, s) }] : []),
     ...(gemini    ? [{ call: (s: boolean) => callGemini(userPrompt, system, s) }] : []),
+    ...(anthropic ? [{ call: (s: boolean) => callClaude(userPrompt, system, s) }] : []),
   ];
 
-  if (!providers.length) throw new AiUnavailableError("No AI provider configured");
+  if (!providers.length) throw new AiUnavailableError("AI engine not configured");
 
   for (let i = 0; i < providers.length; i++) {
     try {
@@ -282,13 +297,19 @@ export async function nl2sql(prompt: string, dialect = "PostgreSQL"): Promise<NL
       let parsed: unknown;
       try { parsed = JSON.parse(cleaned); } catch { const ex = extractJson(cleaned); if (!ex) throw new AiParseError("bad JSON"); parsed = JSON.parse(ex); }
       const p = parsed as Partial<NL2SQLResult>;
-      return { sql: p.sql ?? "", explanation: p.explanation ?? "", assumptions: Array.isArray(p.assumptions) ? p.assumptions : [], tablesNeeded: Array.isArray(p.tablesNeeded) ? p.tablesNeeded : [], dialect: p.dialect ?? dialect };
+      return {
+        sql: p.sql ?? "",
+        explanation: p.explanation ?? "",
+        assumptions: Array.isArray(p.assumptions) ? p.assumptions : [],
+        tablesNeeded: Array.isArray(p.tablesNeeded) ? p.tablesNeeded : [],
+        dialect: p.dialect ?? dialect
+      };
     } catch (err) {
       if (i < providers.length - 1) continue;
       throw err;
     }
   }
-  throw new AiUnavailableError("NL2SQL failed");
+  throw new AiUnavailableError("Conversion service unavailable");
 }
 
 // Re-export for legacy imports

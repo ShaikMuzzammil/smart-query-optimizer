@@ -54,7 +54,7 @@ class PdfBuilder {
     this.page = this.doc.addPage([PAGE_W, PAGE_H]);
     this.pageNum++;
     this.y = PAGE_H - MARGIN;
-    this.page.drawText("QueryForge", {
+    this.page.drawText("Smart Query Optimizer", {
       x: MARGIN, y: PAGE_H - 28, size: 8, font: this.bold, color: VIOLET,
     });
     this.page.drawText(`Page ${this.pageNum}`, {

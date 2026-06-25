@@ -3,26 +3,25 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { Providers } from "@/components/layout/Providers";
 import { Toaster } from "sonner";
-const inter = { variable: "" };
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"),
-  title: { default: "QueryForge — AI Database Performance Platform", template: "%s | QueryForge" },
-  description: "Production-grade SQL optimization powered by dual AI engines. Detect N+1 anti-patterns, get index recommendations, NL-to-SQL conversion, PII redaction, and export in 4 formats.",
-  keywords: ["SQL optimizer", "query optimization", "AI database", "PostgreSQL performance", "NL2SQL", "database engineering"],
-  authors: [{ name: "QueryForge" }],
+  title: { default: "Smart Query Optimizer — SQL Intelligence Platform", template: "%s | Smart Query Optimizer" },
+  description: "Production-grade SQL optimization. Detect anti-patterns, get index recommendations, convert natural language to SQL, PII redaction, and export in 4 formats. 12 industry domains, 99 examples.",
+  keywords: ["SQL optimizer", "query optimization", "database performance", "PostgreSQL", "NL2SQL", "SQL playground", "schema vault"],
+  authors: [{ name: "Smart Query Optimizer" }],
   openGraph: {
     type: "website",
     locale: "en_US",
     url: process.env.NEXT_PUBLIC_APP_URL,
-    title: "QueryForge — AI Database Performance Platform",
-    description: "Optimize SQL with AI. Detect anti-patterns, get index recommendations, convert natural language to SQL, and export anywhere.",
-    siteName: "QueryForge",
+    title: "Smart Query Optimizer — SQL Intelligence Platform",
+    description: "Optimize SQL queries with AI. Anti-pattern detection, index recommendations, natural language to SQL, schema visualization, and in-browser playground.",
+    siteName: "Smart Query Optimizer",
   },
   twitter: {
     card: "summary_large_image",
-    title: "QueryForge — AI Database Performance Platform",
-    description: "Production-grade SQL optimization with dual AI engine (Claude + Gemini), live scanner, and full history.",
+    title: "Smart Query Optimizer — SQL Intelligence Platform",
+    description: "Production-grade SQL optimization with live scanner, 99 examples across 12 domains, schema vault, and SQL playground.",
   },
   robots: { index: true, follow: true },
 };
@@ -35,7 +34,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={inter.variable} suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning>
       <body className="min-h-screen bg-[#030309] font-sans antialiased">
         <Providers>
           {children}
