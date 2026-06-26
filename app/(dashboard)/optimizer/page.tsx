@@ -622,7 +622,7 @@ function OptimizerContent() {
                           <div className="text-[10px] font-bold text-rose-400 tracking-wider mb-2 flex items-center gap-1.5">
                             <AlignLeft className="w-3 h-3" />BEFORE — ORIGINAL
                           </div>
-                          <SqlBlock sql={result.originalQuery} />
+                          <SqlBlock sql={result.originalQuery} label="ORIGINAL QUERY" />
                         </div>
                       )}
                       {(sqlView === "split" || sqlView === "after") && (
@@ -630,7 +630,7 @@ function OptimizerContent() {
                           <div className="text-[10px] font-bold text-emerald-400 tracking-wider mb-2 flex items-center gap-1.5">
                             <AlignRight className="w-3 h-3" />AFTER — OPTIMIZED
                           </div>
-                          <SqlBlock sql={result.optimizedQuery} />
+                          <SqlBlock sql={result.optimizedQuery} label="OPTIMIZED QUERY" />
                         </div>
                       )}
                     </div>
