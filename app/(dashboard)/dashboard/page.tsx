@@ -8,7 +8,7 @@ import { useSession } from "next-auth/react";
 import { DOMAIN_CONFIG, gainColor, timeAgo } from "@/lib/utils";
 import {
   Zap, TrendingUp, Database, Flame, ArrowRight, Plus, Clock,
-  BookOpen, History, BarChart3, Sparkles, Award, Gauge,
+  BookOpen, History, BarChart3, Sparkles, Award, Gauge, Brain,
 } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,

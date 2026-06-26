@@ -325,7 +325,7 @@ export default function SettingsPage() {
           <div className="flex items-center gap-2 mb-4">
             <FileText className="w-4 h-4 text-violet-400" /><h2 className="text-sm font-bold">Export Your Data</h2>
           </div>
-          <p className="text-sm text-slate-400 mb-5">Download your complete optimization history. You'll be asked to confirm the format and scope before downloading.</p>
+          <p className="text-sm text-slate-400 mb-5">Download your complete optimization history. You&apos;ll be asked to confirm the format and scope before downloading.</p>
           <div className="grid sm:grid-cols-2 gap-3">
             {exportOptions.map(({ fmt, icon: Icon, label, desc, color }) => (
               <button key={fmt} onClick={() => setExportModal({ open: true, defaultFormat: fmt })}

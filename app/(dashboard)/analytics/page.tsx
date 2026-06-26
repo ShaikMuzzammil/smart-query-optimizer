@@ -403,7 +403,7 @@ export default function AnalyticsPage() {
 
           {/* ── Section 5: Domain Breakdown ── */}
           <div className="mb-10">
-            <SectionHeader title="Domain Breakdown" desc="Which SQL domains you've worked on most" />
+            <SectionHeader title="Domain Breakdown" desc="Which SQL domains you&apos;ve worked on most" />
             <div className="grid lg:grid-cols-3 gap-5">
               <div className="glass-card rounded-2xl p-5">
                 <div className="text-sm font-semibold mb-4 flex items-center gap-2">

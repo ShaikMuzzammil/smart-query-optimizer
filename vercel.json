@@ -1,7 +1,7 @@
 {
-  "buildCommand": "prisma generate && prisma db push --skip-generate && next build",
-  "installCommand": "npm install",
   "framework": "nextjs",
+  "buildCommand": "prisma db push --accept-data-loss && next build",
+  "installCommand": "npm install",
   "env": {
     "NEXT_TELEMETRY_DISABLED": "1"
   }

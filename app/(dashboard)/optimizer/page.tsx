@@ -69,9 +69,9 @@ const SCAN_PATTERNS = [
   { id:"n3", sev:"high",     title:"Function on Indexed Column",              rx:/\b(YEAR|MONTH|DAY|DATE|LOWER|UPPER|TRIM)\s*\(/i, tip:"Wrapping a column in a function prevents index use." },
   { id:"n4", sev:"high",     title:"Implicit JOIN (Comma Syntax)",            rx:/FROM\s+\w+\s*,\s*\w+/i,                     tip:"Comma-style JOINs block the optimizer from choosing the best plan." },
   { id:"n5", sev:"medium",   title:"Missing LIMIT Clause",                    rx:/SELECT\b(?![\s\S]*\bLIMIT\b)/i,              tip:"Without LIMIT, queries return unbounded result sets." },
-  { id:"n6", sev:"medium",   title:"SELECT * (All Columns Selected)",         rx:/SELECT\s+\*/i,                               tip:"SELECT * can't use covering indexes and wastes network bandwidth." },
+  { id:"n6", sev:"medium",   title:"SELECT * (All Columns Selected)",         rx:/SELECT\s+\*/i,                               tip:"SELECT * can&apos;t use covering indexes and wastes network bandwidth." },
   { id:"n7", sev:"medium",   title:"NOT IN with Subquery",                    rx:/NOT\s+IN\s*\(\s*SELECT/i,                    tip:"NOT IN returns nothing if the subquery has any NULL rows. Use NOT EXISTS." },
-  { id:"n8", sev:"low",      title:"OR Across Different Columns",             rx:/WHERE\s+.*\bOR\b/i,                          tip:"OR often can't use a single index. Consider UNION ALL." },
+  { id:"n8", sev:"low",      title:"OR Across Different Columns",             rx:/WHERE\s+.*\bOR\b/i,                          tip:"OR often can&apos;t use a single index. Consider UNION ALL." },
 ];
 
 function useLiveScanner(sql: string) {
@@ -110,8 +110,8 @@ type ResultTab = "summary" | "sql" | "issues" | "improvements";
 // ── Dialect Analysis Panel ────────────────────────────────────────────────────
 function DialectPanel({ dialect, onClose }: { dialect: Dialect; onClose: () => void }) {
   const info = DIALECT_INFO[dialect];
-  if (!info) return null;
   const [tab, setTab] = useState<"strengths"|"watchout"|"functions"|"indexes">("strengths");
+  if (!info) return null;
   const tabData: Record<string, { label: string; items: string[]; color: string }> = {
     strengths: { label: "Strengths",    items: info.strengths,    color: "text-emerald-300" },
     watchout:  { label: "Watch Out",    items: info.watchOut,     color: "text-amber-300" },
@@ -226,7 +226,7 @@ function OptimizerContent() {
       }
       setResult({ ...data, originalQuery: query });
       setResultTab("summary");
-      if (data.isValidSql === false) toast.warning("That doesn't look like valid SQL");
+      if (data.isValidSql === false) toast.warning("That doesn&apos;t look like valid SQL");
       else toast.success(`⚡ +${data.performanceGain}% estimated performance gain`);
     } catch { toast.error("Network error — please check your connection"); }
     finally { setLoading(false); }
@@ -463,7 +463,7 @@ function OptimizerContent() {
                 <button onClick={() => setShowDialectPanel(v => !v)}
                   className="w-full flex items-center gap-2 p-3 rounded-xl border border-violet-500/15 hover:border-violet-500/30 hover:bg-violet-500/5 transition-colors text-xs text-slate-400 hover:text-slate-200">
                   <Info className="w-3.5 h-3.5 text-violet-400" />
-                  Click here or the "{dialect} Reference" button above for dialect-specific tips
+                  Click here or the &ldquo;{dialect} Reference&rdquo; button above for dialect-specific tips
                 </button>
               </div>
             </div>
