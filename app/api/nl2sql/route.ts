@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import { getAuth } from "@/lib/auth";
 import { nl2sql, AiUnavailableError, AiParseError } from "@/lib/ai-engine";
+import { db } from "@/lib/db";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -21,14 +22,32 @@ export async function POST(req: Request) {
     const body = await req.json();
     const parsed = schema.safeParse(body);
     if (!parsed.success)
-      return NextResponse.json({ error: "Please describe what SQL you need (at least 5 characters)." }, { status: 400 });
+      return NextResponse.json({ error: "Describe what SQL you need (at least 5 characters)." }, { status: 400 });
 
     const { prompt, dialect, schemaContext } = parsed.data;
     const result = await nl2sql(prompt, dialect, schemaContext);
+
+    // Track this conversion
+    try {
+      await db.conversion.create({
+        data: {
+          userId:   session.user.id,
+          type:     "nl2sql",
+          prompt,
+          sql:      result.sql,
+          dialect,
+          metadata: { tablesNeeded: result.tablesNeeded, hasSchemaCtx: !!schemaContext },
+        },
+      });
+    } catch (trackErr) {
+      // non-fatal — don't fail the request if tracking fails
+      console.warn("[NL2SQL] tracking failed:", trackErr);
+    }
+
     return NextResponse.json(result);
   } catch (err) {
     if (err instanceof AiUnavailableError)
-      return NextResponse.json({ error: "Conversion service is temporarily unavailable. Please try again." }, { status: 503 });
+      return NextResponse.json({ error: "Conversion engine temporarily unavailable. Please try again." }, { status: 503 });
     if (err instanceof AiParseError)
       return NextResponse.json({ error: "Conversion returned an unexpected format — try again." }, { status: 502 });
     console.error("[NL2SQL]", err);

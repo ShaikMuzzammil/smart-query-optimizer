@@ -6,19 +6,20 @@ import { signOut, useSession } from "next-auth/react";
 import { motion } from "framer-motion";
 import {
   LayoutDashboard, Zap, History, BarChart3, Settings, LogOut, BookOpen,
-  Brain, Database, Terminal, Home, FlaskConical,
+  Brain, Database, Terminal, Home,
 } from "lucide-react";
 
+// badge: shown in pill + full tooltip text
 const NAV = [
-  { href: "/dashboard",   icon: LayoutDashboard, label: "Dashboard",    badge: null },
-  { href: "/optimizer",   icon: Zap,             label: "SQL Optimizer", badge: null },
-  { href: "/nl2sql",      icon: Brain,           label: "NL to SQL",    badge: "NEW" },
-  { href: "/schema",      icon: Database,        label: "Schema Vault", badge: "NEW" },
-  { href: "/playground",  icon: Terminal,        label: "Playground",   badge: "β" },
-  { href: "/examples",    icon: BookOpen,        label: "Examples",     badge: "99" },
-  { href: "/history",     icon: History,         label: "History",      badge: null },
-  { href: "/analytics",   icon: BarChart3,       label: "Analytics",    badge: null },
-  { href: "/settings",    icon: Settings,        label: "Settings",     badge: null },
+  { href:"/dashboard",  icon:LayoutDashboard, label:"Dashboard",    badge:null,  title:"Dashboard — overview of all your activity" },
+  { href:"/optimizer",  icon:Zap,             label:"SQL Optimizer",badge:null,  title:"SQL Optimizer — paste SQL and get AI-powered rewrites" },
+  { href:"/nl2sql",     icon:Brain,           label:"NL to SQL",    badge:"NEW", title:"Natural Language to SQL — describe data in plain English, get SQL" },
+  { href:"/schema",     icon:Database,        label:"Schema Vault", badge:"NEW", title:"Schema Vault — upload DDL, visualize ER diagram, inject context" },
+  { href:"/playground", icon:Terminal,        label:"Playground",   badge:"β",   title:"SQL Playground (Beta) — run SQL in-browser against sample data" },
+  { href:"/examples",   icon:BookOpen,        label:"Examples",     badge:"99",  title:"Examples library — 99 real SQL queries across 12 industry domains" },
+  { href:"/history",    icon:History,         label:"History",      badge:null,  title:"History — all your past optimizations, searchable and exportable" },
+  { href:"/analytics",  icon:BarChart3,       label:"Analytics",    badge:null,  title:"Analytics — performance charts, domain breakdown, streak tracking" },
+  { href:"/settings",   icon:Settings,        label:"Settings",     badge:null,  title:"Settings — profile, connection status, export data" },
 ];
 
 export function Sidebar() {
@@ -41,7 +42,8 @@ export function Sidebar() {
       {/* Home link */}
       <div className="px-3 pt-3 pb-1">
         <Link href="/"
-          className="flex items-center gap-2 px-3 py-2 text-xs text-slate-500 hover:text-slate-300 hover:bg-violet-500/5 rounded-xl transition-colors">
+          className="flex items-center gap-2 px-3 py-2 text-xs text-slate-500 hover:text-slate-300 hover:bg-violet-500/5 rounded-xl transition-colors"
+          title="Back to landing page">
           <Home className="w-3.5 h-3.5"/>Back to Home
         </Link>
       </div>
@@ -50,13 +52,13 @@ export function Sidebar() {
       <nav className="flex-1 px-3 py-2 space-y-0.5 overflow-y-auto">
         {NAV.map(item => {
           const active = pathname === item.href;
-          const Icon = item.icon;
+          const Icon   = item.icon;
           return (
-            <Link key={item.href} href={item.href} className="relative block">
+            <Link key={item.href} href={item.href} className="relative block group" title={item.title}>
               {active && (
                 <motion.div layoutId="sidebar-active"
                   className="absolute inset-0 bg-violet-500/15 border border-violet-500/30 rounded-xl"
-                  transition={{ type: "spring", duration: 0.4 }}/>
+                  transition={{ type:"spring", duration:0.4 }}/>
               )}
               <div className={`relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-colors
                 ${active ? "text-violet-300 font-semibold" : "text-slate-400 hover:text-slate-200 hover:bg-violet-500/5"}`}>
@@ -67,7 +69,11 @@ export function Sidebar() {
                     item.badge === "NEW" ? "bg-violet-500/20 text-violet-300" :
                     item.badge === "β"   ? "bg-amber-500/20 text-amber-300" :
                     "bg-slate-500/20 text-slate-400"
-                  }`}>
+                  }`} title={
+                    item.badge === "NEW" ? "New feature" :
+                    item.badge === "β"   ? "Beta — preview feature, may change" :
+                    `${item.badge} items available`
+                  }>
                     {item.badge}
                   </span>
                 )}
@@ -80,7 +86,8 @@ export function Sidebar() {
       {/* Quick optimize CTA */}
       <div className="px-3 pb-3">
         <Link href="/optimizer"
-          className="flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-violet-600 to-purple-700 hover:from-violet-500 hover:to-purple-600 text-white text-xs font-semibold rounded-xl transition-all glow-violet shadow-lg shadow-violet-500/20">
+          className="flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-violet-600 to-purple-700 hover:from-violet-500 hover:to-purple-600 text-white text-xs font-semibold rounded-xl transition-all shadow-lg shadow-violet-500/20"
+          title="Start a new SQL optimization">
           <Zap className="w-3.5 h-3.5"/> New Optimization
         </Link>
       </div>
@@ -96,8 +103,9 @@ export function Sidebar() {
             <div className="text-[10px] text-slate-500 truncate">{session?.user?.email}</div>
           </div>
         </div>
-        <button onClick={() => signOut({ callbackUrl: "/" })}
-          className="w-full flex items-center gap-2 px-2 py-2 text-xs text-slate-500 hover:text-rose-400 transition-colors rounded-lg hover:bg-rose-500/5">
+        <button onClick={() => signOut({ callbackUrl:"/" })}
+          className="w-full flex items-center gap-2 px-2 py-2 text-xs text-slate-500 hover:text-rose-400 transition-colors rounded-lg hover:bg-rose-500/5"
+          title="Sign out of your account">
           <LogOut className="w-3.5 h-3.5"/> Sign out
         </button>
       </div>
