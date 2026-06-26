@@ -40,7 +40,7 @@ export async function GET(req: Request) {
         return new NextResponse(csv, {
           headers: {
             "Content-Type": "text/csv; charset=utf-8",
-            "Content-Disposition": `attachment; filename="smartquery-history.csv"`,
+            "Content-Disposition": `attachment; filename="queryforge-history.csv"`,
           },
         });
       }
@@ -49,7 +49,7 @@ export async function GET(req: Request) {
         return new NextResponse(Buffer.from(pdfBytes), {
           headers: {
             "Content-Type": "application/pdf",
-            "Content-Disposition": `attachment; filename="smartquery-history.pdf"`,
+            "Content-Disposition": `attachment; filename="queryforge-history.pdf"`,
           },
         });
       }

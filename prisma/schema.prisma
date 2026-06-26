@@ -22,11 +22,10 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  accounts    Account[]
-  sessions    Session[]
-  queries     Query[]
-  conversions Conversion[]
-  ApiKey      ApiKey[]
+  accounts Account[]
+  sessions Session[]
+  queries  Query[]
+  ApiKey   ApiKey[]
 
   @@map("users")
 }
@@ -63,33 +62,33 @@ model Session {
 }
 
 model Query {
-  id                   String   @id @default(cuid())
-  userId               String
-  originalQuery        String   @db.Text
-  optimizedQuery       String   @db.Text
-  domain               String?
-  title                String?
-  performanceGain      Int      @default(0)
-  issues               Json     @default("[]")
-  improvements         Json     @default("[]")
-  indexRecs            Json     @default("[]")
-  tablesDetected       Json     @default("[]")
-  tags                 Json     @default("[]")
-  complexityBefore     String?
-  complexityAfter      String?
-  estimatedSpeedup     String?
+  id               String   @id @default(cuid())
+  userId           String
+  originalQuery    String   @db.Text
+  optimizedQuery   String   @db.Text
+  domain           String?
+  title            String?
+  performanceGain  Int      @default(0)
+  issues           Json     @default("[]")
+  improvements     Json     @default("[]")
+  indexRecs        Json     @default("[]")
+  tablesDetected   Json     @default("[]")
+  tags             Json     @default("[]")
+  complexityBefore String?
+  complexityAfter  String?
+  estimatedSpeedup String?
   estimatedRowsScanned String?
-  costScore            Int?
-  readabilityNotes     String?  @db.Text
-  engine               String?  @default("ai")
-  queryType            String   @default("SELECT")
-  explanation          String?  @db.Text
-  isFavorited          Boolean  @default(false)
-  isShared             Boolean  @default(false)
-  shareToken           String?  @unique @default(cuid())
-  executionTimeMs      Int?
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  costScore        Int?
+  readabilityNotes String?  @db.Text
+  engine           String?  @default("claude")
+  queryType        String   @default("SELECT")
+  explanation      String?  @db.Text
+  isFavorited      Boolean  @default(false)
+  isShared         Boolean  @default(false)
+  shareToken       String?  @unique @default(cuid())
+  executionTimeMs  Int?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -97,25 +96,6 @@ model Query {
   @@index([userId, domain])
   @@index([shareToken])
   @@map("queries")
-}
-
-// Tracks NL→SQL conversions, Schema uploads, Playground runs etc.
-model Conversion {
-  id        String   @id @default(cuid())
-  userId    String
-  type      String   // "nl2sql" | "schema_upload" | "playground"
-  prompt    String?  @db.Text
-  sql       String?  @db.Text
-  dialect   String?
-  domain    String?
-  metadata  Json     @default("{}")
-  createdAt DateTime @default(now())
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId, createdAt(sort: Desc)])
-  @@index([userId, type])
-  @@map("conversions")
 }
 
 model ApiKey {

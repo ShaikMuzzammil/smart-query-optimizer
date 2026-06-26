@@ -8,7 +8,7 @@ import { useSession } from "next-auth/react";
 import { DOMAIN_CONFIG, gainColor, timeAgo } from "@/lib/utils";
 import {
   Zap, TrendingUp, Database, Flame, ArrowRight, Plus, Clock,
-  BookOpen, History, BarChart3, Sparkles, Award, Gauge, Brain,
+  BookOpen, History, BarChart3, Sparkles, Award, Gauge,
 } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
@@ -18,10 +18,10 @@ import {
 const DOMAIN_COLORS = ["#7c3aed","#06d6a0","#fbbf24","#38bdf8","#f72585","#f97316","#10b981","#8b5cf6"];
 
 const QUICK_ACTIONS = [
-  { href: "/optimizer",  icon: Zap,      label: "SQL Optimizer",              desc: "AI-powered query optimization",  color: "violet" },
-  { href: "/nl2sql",     icon: Brain,    label: "Natural Language to SQL",    desc: "Plain English → SQL",             color: "sky"    },
-  { href: "/schema",     icon: Database, label: "Schema Vault",               desc: "Upload DDL, get ER diagram",     color: "emerald"},
-  { href: "/analytics",  icon: BarChart3,label: "Analytics",                  desc: "Charts, trends, all features",   color: "amber"  },
+  { href: "/optimizer",  icon: Zap,      label: "New Optimization", desc: "Optimize a SQL query with AI",      color: "violet" },
+  { href: "/examples",   icon: BookOpen, label: "Browse Examples",  desc: "99 real queries to learn from",    color: "sky"    },
+  { href: "/history",    icon: History,  label: "View History",     desc: "Past optimizations + exports",     color: "emerald"},
+  { href: "/analytics",  icon: BarChart3,label: "Analytics",        desc: "Charts, trends, and insights",     color: "amber"  },
 ];
 
 const CARD_COLOR: Record<string, string> = {
@@ -46,12 +46,12 @@ export default function DashboardPage() {
   const firstName = session?.user?.name?.split(" ")[0] ?? "there";
 
   const kpis = [
-    { label: "SQL Optimizations",     value: analytics?.totalQueries ?? 0,           icon: <Zap className="w-4 h-4"/>,       color: "violet" },
-    { label: "NL to SQL Conversions", value: analytics?.totalNl2sql ?? 0,            icon: <Brain className="w-4 h-4"/>,     color: "sky"    },
-    { label: "Avg Performance Gain",  value: `+${analytics?.avgGain ?? 0}%`,         icon: <TrendingUp className="w-4 h-4"/>, color: "emerald" },
+    { label: "Total Optimizations", value: analytics?.totalQueries ?? 0,           icon: <Zap className="w-4 h-4"/>,       color: "violet" },
+    { label: "Avg Performance Gain", value: `+${analytics?.avgGain ?? 0}%`,         icon: <TrendingUp className="w-4 h-4"/>, color: "emerald" },
     { label: "Issues Fixed",          value: analytics?.totalIssuesFixed ?? 0,       icon: <Database className="w-4 h-4"/>,  color: "sky"    },
-    { label: "Day Streak",            value: analytics?.streak ?? 0,                 icon: <Flame className="w-4 h-4"/>,     color: "amber"  },
-    { label: "All Interactions",      value: analytics?.totalAllFeatures ?? 0,       icon: <Award className="w-4 h-4"/>,     color: "violet" },
+    { label: "Day Streak",            value: analytics?.streak ?? 0,                icon: <Flame className="w-4 h-4"/>,     color: "amber"  },
+    { label: "Avg Cost Score",        value: analytics?.avgCostScore != null ? `${analytics.avgCostScore}/100` : "—", icon: <Gauge className="w-4 h-4"/>, color: "violet" },
+    { label: "Top Gain",             value: analytics?.topGains?.[0] ? `+${analytics.topGains[0].performanceGain}%` : "—", icon: <Award className="w-4 h-4"/>, color: "emerald" },
   ];
 
   return (
