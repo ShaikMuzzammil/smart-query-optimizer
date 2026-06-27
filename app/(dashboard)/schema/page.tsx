@@ -127,7 +127,7 @@ interface TableInfo {
 
 function parseDDL(ddl: string): TableInfo[] {
   const tables: TableInfo[] = [];
-  const tableRegex = /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?["'`]?(\w+)["'`]?\s*\(([^;]+)\)/gis;
+  const tableRegex = /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?["'`]?(\w+)["'`]?\s*\(([^;]+)\)/gi;
   let match;
   while ((match = tableRegex.exec(ddl)) !== null) {
     const name = match[1];

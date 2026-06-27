@@ -455,7 +455,7 @@ export default function OptimizerPage() {
             const issues: { label: string; desc: string; severity: string }[] = [];
             if (/select\s+\*/i.test(sql)) issues.push({ label: "SELECT * Usage", desc: "Fetches all columns — prevents index-only scans and wastes bandwidth.", severity: "medium" });
             if (/YEAR\s*\(|MONTH\s*\(|DAY\s*\(|DATE\s*\(/i.test(sql)) issues.push({ label: "Function on Indexed Column", desc: "Wrapping a column in a function prevents the query engine from using an index on that column.", severity: "high" });
-            if (/SELECT.*FROM\s+\w+.*WHERE.*SELECT/is.test(sql)) issues.push({ label: "Correlated Subquery (N+1)", desc: "Runs once per outer row. Replace with a JOIN + GROUP BY for O(n) instead of O(n²) execution.", severity: "critical" });
+            if (/SELECT[\s\S]*?FROM\s+\w+[\s\S]*?WHERE[\s\S]*?SELECT/i.test(sql)) issues.push({ label: "Correlated Subquery (N+1)", desc: "Runs once per outer row. Replace with a JOIN + GROUP BY for O(n) instead of O(n²) execution.", severity: "critical" });
             if (!/LIMIT|TOP|ROWNUM|FETCH\s+FIRST/i.test(sql) && /SELECT/i.test(sql)) issues.push({ label: "Missing LIMIT Clause", desc: "Without a result-set bound, a single query can return millions of rows and saturate memory.", severity: "medium" });
             if (!/WHERE/i.test(sql) && /SELECT/i.test(sql)) issues.push({ label: "Missing WHERE Clause", desc: "Full table scan — no filter means every row is examined.", severity: "high" });
             if (issues.length === 0) return null;
