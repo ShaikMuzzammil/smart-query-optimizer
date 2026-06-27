@@ -1,12 +1,13 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
-  "buildCommand": "prisma generate && prisma db push --accept-data-loss --skip-generate && next build",
+  "buildCommand": "next build",
   "installCommand": "npm install",
   "devCommand": "next dev",
   "regions": ["iad1"],
   "functions": {
     "app/api/optimize/route.ts": { "maxDuration": 30 },
+    "app/api/nl2sql/route.ts":   { "maxDuration": 30 },
     "app/api/analytics/route.ts": { "maxDuration": 15 }
   }
 }

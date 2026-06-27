@@ -5,34 +5,28 @@ import { db } from "@/lib/db";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const aiOk = !!(process.env.GEMINI_API_KEY || process.env.ANTHROPIC_API_KEY);
-  const infraOk = !!(process.env.DATABASE_URL && process.env.NEXTAUTH_SECRET && process.env.NEXTAUTH_URL);
+  const checks: Record<string, "ok" | "error" | "missing"> = {
+    database: "error",
+    ai:       "missing",
+    nextauth: "missing",
+  };
 
-  let dbOk = false;
-  let dbDetail = "Not connected";
-  let schemaOk = false;
-
+  // Database
   try {
-    const start = Date.now();
     await db.$queryRaw`SELECT 1`;
-    dbOk = true;
-    dbDetail = `Connected (${Date.now() - start}ms)`;
-    try {
-      await db.user.count();
-      schemaOk = true;
-    } catch { schemaOk = false; }
-  } catch { dbOk = false; }
+    checks.database = "ok";
+  } catch {}
 
-  const allOk = aiOk && infraOk && dbOk && schemaOk;
+  // AI engine
+  checks.ai = process.env.GEMINI_API_KEY ? "ok" : "missing";
 
-  return NextResponse.json({
-    status: allOk ? "healthy" : "degraded",
-    services: {
-      ai_engine:     { ok: aiOk,     label: aiOk ? "AI engine connected" : "AI engine unavailable" },
-      infrastructure: { ok: infraOk, label: infraOk ? "Configuration complete" : "Configuration incomplete" },
-      database:      { ok: dbOk,     label: dbDetail },
-      schema:        { ok: schemaOk, label: schemaOk ? "Schema verified" : "Schema pending migration" },
-    },
-    timestamp: new Date().toISOString(),
-  }, { status: allOk ? 200 : 500 });
+  // NextAuth
+  checks.nextauth = process.env.NEXTAUTH_SECRET ? "ok" : "missing";
+
+  const allOk = Object.values(checks).every((v) => v === "ok");
+
+  return NextResponse.json(
+    { status: allOk ? "healthy" : "degraded", checks, ts: new Date().toISOString() },
+    { status: allOk ? 200 : 503 }
+  );
 }

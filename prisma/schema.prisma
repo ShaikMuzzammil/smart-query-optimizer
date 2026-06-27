@@ -22,10 +22,10 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  accounts Account[]
-  sessions Session[]
-  queries  Query[]
-  ApiKey   ApiKey[]
+  accounts    Account[]
+  sessions    Session[]
+  queries     Query[]
+  conversions Conversion[]
 
   @@map("users")
 }
@@ -80,7 +80,7 @@ model Query {
   estimatedRowsScanned String?
   costScore        Int?
   readabilityNotes String?  @db.Text
-  engine           String?  @default("claude")
+  engine           String?  @default("ai")
   queryType        String   @default("SELECT")
   explanation      String?  @db.Text
   isFavorited      Boolean  @default(false)
@@ -98,17 +98,24 @@ model Query {
   @@map("queries")
 }
 
-model ApiKey {
-  id        String    @id @default(cuid())
-  userId    String
-  name      String
-  key       String    @unique
-  lastUsed  DateTime?
-  createdAt DateTime  @default(now())
+// Tracks all feature usage: NL2SQL conversions, schema uploads, playground runs, etc.
+model Conversion {
+  id          String   @id @default(cuid())
+  userId      String
+  feature     String   // "nl2sql" | "schema_upload" | "playground_run" | "export"
+  inputText   String?  @db.Text
+  outputText  String?  @db.Text
+  dialect     String?
+  domain      String?
+  success     Boolean  @default(true)
+  metadata    Json     @default("{}")
+  createdAt   DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@map("api_keys")
+  @@index([userId, feature])
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("conversions")
 }
 
 enum Role {

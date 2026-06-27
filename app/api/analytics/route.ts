@@ -1,4 +1,4 @@
-// app/api/analytics/route.ts
+// app/api/analytics/route.ts — Universal analytics across all features
 import { NextResponse } from "next/server";
 import { getAuth } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -12,15 +12,11 @@ export async function GET() {
     const userId = session.user.id;
 
     const [
-      totalQueries, avgGain, domainBreakdown, recentTrend, topGains, issueTypes, engineBreakdown, avgCost,
+      totalQueries, avgGain, domainBreakdown, recentTrend, topGains, issueTypes, avgCost,
+      nl2sqlCount, schemaCount, playgroundCount, exportCount, totalConversions,
     ] = await Promise.all([
-      // Total query count
       db.query.count({ where: { userId } }),
-
-      // Average performance gain
       db.query.aggregate({ where: { userId }, _avg: { performanceGain: true } }),
-
-      // Queries by domain
       db.query.groupBy({
         by: ["domain"],
         where: { userId },
@@ -28,8 +24,6 @@ export async function GET() {
         _avg: { performanceGain: true },
         orderBy: { _count: { domain: "desc" } },
       }),
-
-      // Last 14 days trend (1 entry per day)
       db.$queryRaw<Array<{ date: string; count: bigint; avg_gain: number }>>`
         SELECT
           DATE(created_at)::text AS date,
@@ -41,16 +35,12 @@ export async function GET() {
         GROUP BY DATE(created_at)
         ORDER BY date ASC
       `,
-
-      // Top 5 best optimized queries
       db.query.findMany({
         where: { userId },
         orderBy: { performanceGain: "desc" },
         take: 5,
         select: { id: true, title: true, domain: true, performanceGain: true, createdAt: true },
       }),
-
-      // Most common issue types
       db.$queryRaw<Array<{ severity: string; count: bigint }>>`
         SELECT
           issue->>'severity' AS severity,
@@ -60,16 +50,13 @@ export async function GET() {
         GROUP BY issue->>'severity'
         ORDER BY count DESC
       `,
-
-      // Which AI engine handled each optimization (Claude primary vs Gemini fallback)
-      db.query.groupBy({
-        by: ["engine"],
-        where: { userId },
-        _count: { _all: true },
-      }),
-
-      // Average estimated query cost score
       db.query.aggregate({ where: { userId, costScore: { not: null } }, _avg: { costScore: true } }),
+      // Feature usage counts
+      db.conversion.count({ where: { userId, feature: "nl2sql", success: true } }),
+      db.conversion.count({ where: { userId, feature: "schema_upload", success: true } }),
+      db.conversion.count({ where: { userId, feature: "playground_run", success: true } }),
+      db.conversion.count({ where: { userId, feature: "export", success: true } }),
+      db.conversion.count({ where: { userId } }),
     ]);
 
     // Streak calculation
@@ -81,19 +68,38 @@ export async function GET() {
       day.setDate(today.getDate() - i);
       const next = new Date(day);
       next.setDate(day.getDate() + 1);
-      const count = await db.query.count({
-        where: { userId, createdAt: { gte: day, lt: next } },
-      });
-      if (count > 0) streak++;
+      const [qCount, cCount] = await Promise.all([
+        db.query.count({ where: { userId, createdAt: { gte: day, lt: next } } }),
+        db.conversion.count({ where: { userId, createdAt: { gte: day, lt: next } } }),
+      ]);
+      if (qCount + cCount > 0) streak++;
       else if (i > 0) break;
     }
 
+    // NL2SQL trend (last 14 days)
+    const nl2sqlTrend = await db.$queryRaw<Array<{ date: string; count: bigint }>>`
+      SELECT DATE(created_at)::text AS date, COUNT(*) AS count
+      FROM conversions
+      WHERE user_id = ${userId}
+        AND feature = 'nl2sql'
+        AND created_at >= NOW() - INTERVAL '14 days'
+      GROUP BY DATE(created_at)
+      ORDER BY date ASC
+    `;
+
+    const totalIssuesFixed = await db.query.findMany({
+      where: { userId }, select: { issues: true }
+    }).then((qs: Array<{ issues: unknown }>) =>
+      qs.reduce((s: number, q) => s + (Array.isArray(q.issues) ? q.issues.length : 0), 0)
+    );
+
     return NextResponse.json({
+      // Optimizer stats
       totalQueries,
       avgGain: Math.round(avgGain._avg.performanceGain ?? 0),
-      totalIssuesFixed: await db.query.findMany({ where: { userId }, select: { issues: true } })
-        .then((qs: Array<{ issues: unknown }>) => qs.reduce((s: number, q) => s + (Array.isArray(q.issues) ? q.issues.length : 0), 0)),
+      totalIssuesFixed,
       streak,
+      avgCostScore: avgCost._avg.costScore != null ? Math.round(avgCost._avg.costScore) : null,
       domainBreakdown: domainBreakdown.map((d: any) => ({
         domain: d.domain ?? "General",
         count: d._count._all,
@@ -102,12 +108,20 @@ export async function GET() {
       recentTrend: recentTrend.map((r: any) => ({
         date: r.date,
         count: Number(r.count),
-        avgGain: Math.round(r.avg_gain),
+        avg_gain: Math.round(r.avg_gain ?? 0),
       })),
       topGains,
       issueTypes: issueTypes.map((i: any) => ({ severity: i.severity, count: Number(i.count) })),
-      engineBreakdown: engineBreakdown.map((e: any) => ({ engine: e.engine ?? "claude", count: e._count._all })),
-      avgCostScore: avgCost._avg.costScore != null ? Math.round(avgCost._avg.costScore) : null,
+      // Universal feature stats
+      featureUsage: {
+        optimizer:  totalQueries,
+        nl2sql:     nl2sqlCount,
+        schema:     schemaCount,
+        playground: playgroundCount,
+        export:     exportCount,
+      },
+      totalActions: totalQueries + totalConversions,
+      nl2sqlTrend: nl2sqlTrend.map((r: any) => ({ date: r.date, count: Number(r.count) })),
     });
   } catch (err) {
     console.error("[ANALYTICS]", err);

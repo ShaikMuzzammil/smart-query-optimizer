@@ -1,7 +1,7 @@
 // app/api/optimize/route.ts
 import { NextResponse } from "next/server";
 import { getAuth } from "@/lib/auth";
-import { optimizeSQL, AiParseError, AiUnavailableError } from "@/lib/ai-engine";
+import { optimizeSQL, AiUnavailableError, AiParseError } from "@/lib/ai-engine";
 import { db } from "@/lib/db";
 import { z } from "zod";
 
@@ -22,60 +22,52 @@ export async function POST(req: Request) {
     const body = await req.json();
     const parsed = schema.safeParse(body);
     if (!parsed.success)
-      return NextResponse.json({ error: "Paste at least 3 characters of SQL to optimize." }, { status: 400 });
+      return NextResponse.json({ error: "Please provide a SQL query to optimize." }, { status: 400 });
 
     const { query, dialect, schemaContext } = parsed.data;
 
-    const start = Date.now();
     let result;
     try {
       result = await optimizeSQL(query, dialect, schemaContext);
     } catch (err) {
-      if (err instanceof AiUnavailableError) {
-        return NextResponse.json({
-          error: "Optimization service is temporarily unavailable. Please try again in a moment.",
-        }, { status: 503 });
-      }
+      if (err instanceof AiUnavailableError)
+        return NextResponse.json({ error: "Optimization service is temporarily unavailable. Please try again in a moment." }, { status: 503 });
       if (err instanceof AiParseError)
-        return NextResponse.json({ error: "Analysis returned an unexpected format — please try again." }, { status: 502 });
-
+        return NextResponse.json({ error: "Optimization returned an unexpected result — try again." }, { status: 502 });
       console.error("[OPTIMIZE]", err);
-      return NextResponse.json({ error: "Optimization failed — please try again." }, { status: 502 });
+      return NextResponse.json({ error: "Optimization failed — please try again." }, { status: 500 });
     }
 
-    const executionTimeMs = Date.now() - start;
+    try {
+      await db.query.create({
+        data: {
+          userId:           session.user.id,
+          originalQuery:    query,
+          optimizedQuery:   result.optimizedQuery,
+          domain:           result.domain,
+          title:            result.title,
+          performanceGain:  result.performanceGain,
+          issues:           result.issues as any,
+          improvements:     result.improvements as any,
+          indexRecs:        result.indexRecommendations as any,
+          tablesDetected:   result.tablesDetected as any,
+          complexityBefore: result.complexityBefore,
+          complexityAfter:  result.complexityAfter,
+          estimatedSpeedup: result.estimatedSpeedup,
+          estimatedRowsScanned: result.estimatedRowsScanned,
+          costScore:        result.costScore,
+          readabilityNotes: result.readabilityNotes,
+          engine:           result.engine,
+          queryType:        result.queryType,
+          explanation:      result.explanation,
+        },
+      });
+    } catch (dbErr) {
+      console.error("[OPTIMIZE DB SAVE]", dbErr);
+      // Still return result even if save fails
+    }
 
-    // Non-SQL input: return but don't persist
-    if (!result.isValidSql)
-      return NextResponse.json({ ...result, executionTimeMs, id: null });
-
-    // Persist
-    const saved = await db.query.create({
-      data: {
-        userId:              session.user.id,
-        originalQuery:       query,
-        optimizedQuery:      result.optimizedQuery,
-        domain:              result.domain ?? "General",
-        title:               result.title ?? "SQL Query",
-        performanceGain:     Math.max(0, Math.min(99, result.performanceGain)),
-        issues:              result.issues,
-        improvements:        result.improvements,
-        indexRecs:           result.indexRecommendations,
-        tablesDetected:      result.tablesDetected,
-        complexityBefore:    result.complexityBefore,
-        complexityAfter:     result.complexityAfter,
-        estimatedSpeedup:    result.estimatedSpeedup,
-        estimatedRowsScanned: result.estimatedRowsScanned,
-        costScore:           result.costScore,
-        readabilityNotes:    result.readabilityNotes,
-        engine:              "ai",
-        queryType:           result.queryType,
-        explanation:         result.explanation,
-        executionTimeMs,
-      },
-    });
-
-    return NextResponse.json({ id: saved.id, ...result, executionTimeMs });
+    return NextResponse.json(result);
   } catch (err) {
     console.error("[OPTIMIZE]", err);
     return NextResponse.json({ error: "Unexpected error — please try again." }, { status: 500 });

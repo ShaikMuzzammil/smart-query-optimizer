@@ -1,16 +1,18 @@
-// lib/ai-engine.ts — Dual-provider AI engine (Gemini-first) with automatic failover
-import Anthropic from "@anthropic-ai/sdk";
+// lib/ai-engine.ts — Gemini-only AI engine with 3-model fallback chain
 import { GoogleGenerativeAI } from "@google/generative-ai";
-
-const anthropic = process.env.ANTHROPIC_API_KEY
-  ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-  : null;
 
 const gemini = process.env.GEMINI_API_KEY
   ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
   : null;
 
-// ── System prompt ────────────────────────────────────────────────────────────
+// Ordered fallback: flash → flash-8b → pro
+const GEMINI_MODELS = [
+  "gemini-1.5-flash",
+  "gemini-1.5-flash-8b",
+  "gemini-pro",
+];
+
+// ── System prompt ─────────────────────────────────────────────────────────────
 export function buildOptimizeSystem(dialect = "PostgreSQL", schemaContext?: string) {
   const schemaSection = schemaContext
     ? `\n\nSCHEMA CONTEXT (use these exact table/column names):\n${schemaContext}`
@@ -57,7 +59,7 @@ Rules:
 - Never include text outside the single JSON object`;
 }
 
-// ── PII redaction ────────────────────────────────────────────────────────────
+// ── PII redaction ─────────────────────────────────────────────────────────────
 const PII_PATTERNS = [
   { rx: /(['"])[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\1/g,           label: "[REDACTED_EMAIL]" },
   { rx: /(['"])\d{3}-\d{2}-\d{4}\1/g,                                           label: "[REDACTED_SSN]" },
@@ -81,7 +83,7 @@ export function redactPii(sql: string): RedactResult {
   return { redacted: out, found };
 }
 
-// ── Types ────────────────────────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────
 export interface OptimizeResult {
   isValidSql: boolean;
   optimizedQuery: string;
@@ -105,7 +107,7 @@ export interface OptimizeResult {
   piiFields: string[];
   securityAlerts: string[];
   lintWarnings: string[];
-  engine: "ai" | "engine-a" | "engine-b";
+  engine: "ai";
 }
 
 export interface NL2SQLResult {
@@ -131,7 +133,7 @@ function extractJson(text: string): string | null {
   return null;
 }
 
-function parseResult(raw: string, engine: OptimizeResult["engine"]): OptimizeResult {
+function parseResult(raw: string): OptimizeResult {
   const cleaned = raw.replace(/```json|```/g, "").trim();
   let parsed: unknown;
   try { parsed = JSON.parse(cleaned); }
@@ -165,39 +167,33 @@ function parseResult(raw: string, engine: OptimizeResult["engine"]): OptimizeRes
     piiFields:           Array.isArray(p.piiFields) ? p.piiFields : [],
     securityAlerts:      Array.isArray(p.securityAlerts) ? p.securityAlerts : [],
     lintWarnings:        Array.isArray(p.lintWarnings) ? p.lintWarnings : [],
-    engine,
+    engine:              "ai",
   };
 }
 
-function isRetryable(msg: string) {
-  const m = msg.toLowerCase();
-  return m.includes("api key") || m.includes("auth") || m.includes("401") ||
-         m.includes("rate") || m.includes("429") || m.includes("overload") ||
-         m.includes("503") || m.includes("529") || m.includes("quota") ||
-         m.includes("invalid") || m.includes("permission") || m.includes("forbidden");
-}
+// ── Gemini call with model fallback ─────────────────────────────────────────
+async function callGemini(prompt: string, system: string, modelIdx = 0): Promise<string> {
+  if (!gemini) throw new AiUnavailableError("AI engine not configured. Please add GEMINI_API_KEY to your environment.");
+  if (modelIdx >= GEMINI_MODELS.length) throw new AiUnavailableError("All AI engine models exhausted.");
 
-// ── Provider calls ───────────────────────────────────────────────────────────
-async function callGemini(prompt: string, system: string, strict: boolean): Promise<string> {
-  if (!gemini) throw new AiUnavailableError("Primary AI engine not configured");
-  const sys = strict ? system + "\n\nIMPORTANT: Respond ONLY with a raw JSON object. No markdown, no prose." : system;
-  const model = gemini.getGenerativeModel({
-    model: "gemini-2.0-flash",
-    systemInstruction: sys,
-    generationConfig: { responseMimeType: "application/json" },
-  });
-  const result = await model.generateContent(prompt);
-  return result.response.text();
-}
-
-async function callClaude(prompt: string, system: string, strict: boolean): Promise<string> {
-  if (!anthropic) throw new AiUnavailableError("Fallback AI engine not configured");
-  const sys = strict ? system + "\n\nIMPORTANT: Respond ONLY with a raw JSON object. No markdown, no prose." : system;
-  const msg = await anthropic.messages.create({
-    model: "claude-sonnet-4-6", max_tokens: 2048,
-    system: sys, messages: [{ role: "user", content: prompt }],
-  });
-  return msg.content.map(c => (c.type === "text" ? c.text : "")).join("");
+  const modelName = GEMINI_MODELS[modelIdx];
+  try {
+    const model = gemini.getGenerativeModel({
+      model: modelName,
+      systemInstruction: system + "\n\nIMPORTANT: Respond ONLY with a raw JSON object. No markdown, no prose.",
+      generationConfig: { responseMimeType: "application/json" },
+    });
+    const result = await model.generateContent(prompt);
+    return result.response.text();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const isModelErr = msg.includes("404") || msg.includes("not found") || msg.includes("deprecated") || msg.includes("INVALID_ARGUMENT");
+    if (isModelErr && modelIdx + 1 < GEMINI_MODELS.length) {
+      console.warn(`[AI-ENGINE] ${modelName} failed (${msg.slice(0, 60)}), trying ${GEMINI_MODELS[modelIdx + 1]}`);
+      return callGemini(prompt, system, modelIdx + 1);
+    }
+    throw err;
+  }
 }
 
 // ── Main optimize function ───────────────────────────────────────────────────
@@ -210,55 +206,28 @@ export async function optimizeSQL(
   const prompt = `Analyze this ${dialect} SQL query and return the JSON optimization result:\n\n${redacted}`;
   const system = buildOptimizeSystem(dialect, schemaContext);
 
-  // Gemini first, Claude as fallback
-  const providers: Array<{ name: OptimizeResult["engine"]; call: (s: boolean) => Promise<string> }> = [];
-  if (gemini)    providers.push({ name: "engine-b", call: (s) => callGemini(prompt, system, s) });
-  if (anthropic) providers.push({ name: "engine-a", call: (s) => callClaude(prompt, system, s) });
+  if (!gemini) throw new AiUnavailableError("AI engine not configured.");
 
-  if (!providers.length) {
-    throw new AiUnavailableError("AI engine not configured. Please contact the administrator.");
-  }
-
-  let lastErr: unknown = null;
-  for (let i = 0; i < providers.length; i++) {
-    const { name, call } = providers[i];
-    const isLast = i === providers.length - 1;
-    try {
-      const raw = await call(false);
-      const result = parseResult(raw, name);
-      if (found.length > 0) {
-        result.piiDetected = true;
-        result.piiFields = [...new Set([...result.piiFields, ...found])];
-      }
-      // Normalize engine label for display
-      result.engine = "ai";
-      return result;
-    } catch (err) {
-      lastErr = err;
-      const msg = err instanceof Error ? err.message : String(err);
-      if (!isLast && (err instanceof AiUnavailableError || isRetryable(msg))) {
-        console.warn(`[AI-ENGINE] provider ${name} failed, trying next`);
-        continue;
-      }
-      if (!(err instanceof AiParseError)) {
-        try {
-          const retryRaw = await call(true);
-          const result = parseResult(retryRaw, name);
-          if (found.length > 0) { result.piiDetected = true; result.piiFields = [...new Set([...result.piiFields, ...found])]; }
-          result.engine = "ai";
-          return result;
-        } catch (retryErr) {
-          lastErr = retryErr;
-          if (!isLast && isRetryable(retryErr instanceof Error ? retryErr.message : "")) continue;
-        }
-      }
-      throw err;
+  try {
+    const raw = await callGemini(prompt, system);
+    const result = parseResult(raw);
+    if (found.length > 0) {
+      result.piiDetected = true;
+      result.piiFields = [...new Set([...result.piiFields, ...found])];
     }
+    return result;
+  } catch (err) {
+    if (err instanceof AiParseError) throw err;
+    if (err instanceof AiUnavailableError) throw err;
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("429") || msg.includes("quota") || msg.includes("rate")) {
+      throw new AiUnavailableError("Rate limit reached — please try again in a moment.");
+    }
+    throw new AiUnavailableError("Optimization service temporarily unavailable.");
   }
-  throw lastErr instanceof Error ? lastErr : new Error("Optimization service unavailable");
 }
 
-// ── NL2SQL ───────────────────────────────────────────────────────────────────
+// ── NL2SQL ──────────────────────────────────────────────────────────────────
 const NL2SQL_SYSTEM = (dialect: string, schemaContext?: string) => {
   const schemaSection = schemaContext
     ? `\n\nSCHEMA CONTEXT (use these exact table/column names in your SQL):\n${schemaContext}`
@@ -283,33 +252,30 @@ export async function nl2sql(
   const userPrompt = `Convert this natural language request to ${dialect} SQL:\n"${prompt}"`;
   const system = NL2SQL_SYSTEM(dialect, schemaContext);
 
-  const providers = [
-    ...(gemini    ? [{ call: (s: boolean) => callGemini(userPrompt, system, s) }] : []),
-    ...(anthropic ? [{ call: (s: boolean) => callClaude(userPrompt, system, s) }] : []),
-  ];
+  if (!gemini) throw new AiUnavailableError("AI engine not configured.");
 
-  if (!providers.length) throw new AiUnavailableError("AI engine not configured");
-
-  for (let i = 0; i < providers.length; i++) {
-    try {
-      const raw = await providers[i].call(false);
-      const cleaned = raw.replace(/```json|```/g, "").trim();
-      let parsed: unknown;
-      try { parsed = JSON.parse(cleaned); } catch { const ex = extractJson(cleaned); if (!ex) throw new AiParseError("bad JSON"); parsed = JSON.parse(ex); }
-      const p = parsed as Partial<NL2SQLResult>;
-      return {
-        sql: p.sql ?? "",
-        explanation: p.explanation ?? "",
-        assumptions: Array.isArray(p.assumptions) ? p.assumptions : [],
-        tablesNeeded: Array.isArray(p.tablesNeeded) ? p.tablesNeeded : [],
-        dialect: p.dialect ?? dialect
-      };
-    } catch (err) {
-      if (i < providers.length - 1) continue;
-      throw err;
+  try {
+    const raw = await callGemini(userPrompt, system);
+    const cleaned = raw.replace(/```json|```/g, "").trim();
+    let parsed: unknown;
+    try { parsed = JSON.parse(cleaned); }
+    catch {
+      const ex = extractJson(cleaned);
+      if (!ex) throw new AiParseError("bad JSON");
+      parsed = JSON.parse(ex);
     }
+    const p = parsed as Partial<NL2SQLResult>;
+    return {
+      sql: p.sql ?? "",
+      explanation: p.explanation ?? "",
+      assumptions: Array.isArray(p.assumptions) ? p.assumptions : [],
+      tablesNeeded: Array.isArray(p.tablesNeeded) ? p.tablesNeeded : [],
+      dialect: p.dialect ?? dialect
+    };
+  } catch (err) {
+    if (err instanceof AiParseError) throw err;
+    throw new AiUnavailableError("Conversion service temporarily unavailable.");
   }
-  throw new AiUnavailableError("Conversion service unavailable");
 }
 
 // Re-export for legacy imports
