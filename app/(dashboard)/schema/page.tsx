@@ -168,7 +168,7 @@ function parseDDL(ddl: string): TableInfo[] {
 }
 
 function ERDiagram({ tables }: { tables: TableInfo[] }) {
-  const COLS = Math.min(tables.length, 3);
+  const COLS = Math.max(Math.min(tables.length, 3), 1);
   const W = 220, H_ROW = 28, H_HEADER = 40, GAP_X = 60, GAP_Y = 40;
   const positions: Record<string, { x: number; y: number; h: number }> = {};
   tables.forEach((t, i) => {
@@ -220,7 +220,7 @@ function ERDiagram({ tables }: { tables: TableInfo[] }) {
               fill="#1e1b4b" />
             <rect x={0} y={H_HEADER - 12} width={W} height={12} fill="#1e1b4b" />
             <text x={W / 2} y={H_HEADER / 2 + 5} textAnchor="middle"
-              fill="#a78bfa" fontSize={13} fontWeight="700" fontFamily="monospace">
+              fill="#a78bfa" fontSize={13} fontWeight={700} fontFamily="monospace">
               {t.name}
             </text>
             {t.columns.map((col, ci) => {
@@ -454,13 +454,7 @@ export default function SchemaVaultPage() {
                 value={ddl}
                 onChange={(e) => { setDDL(e.target.value); setSchemaLoaded(false); }}
                 className="w-full h-72 bg-[#07071a] rounded-xl border border-emerald-500/15 text-xs font-mono text-slate-200 p-3 resize-none focus:outline-none focus:border-emerald-500/40 placeholder:text-slate-700 leading-relaxed"
-                placeholder={"Paste CREATE TABLE statements here...
-
-Example:
-CREATE TABLE users (
-  id SERIAL PRIMARY KEY,
-  email VARCHAR(255) UNIQUE NOT NULL
-);"}
+                placeholder={`Paste CREATE TABLE statements here...\n\nExample:\nCREATE TABLE users (\n  id SERIAL PRIMARY KEY,\n  email VARCHAR(255) UNIQUE NOT NULL\n);`}
               />
             )}
 

@@ -201,7 +201,7 @@ export default function SettingsPage() {
         <div className="glass-card rounded-2xl p-6 border border-violet-500/15">
           <div className="flex items-center gap-2 mb-4">
             <Database className="w-4 h-4 text-violet-400" />
-            <span className="text-sm font-bold">Data & Storage</span>
+            <span className="text-sm font-bold">Data &amp; Storage</span>
           </div>
           <p className="text-xs text-slate-400 mb-4 leading-relaxed">
             Your history is stored securely in your account. You can export it at any time, or delete all history below. Deleting is permanent and cannot be undone.

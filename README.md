@@ -1,41 +1,48 @@
-# Smart Query Optimizer — v6
+# ⚡ Smart Query Optimizer — v6
 
-> AI-powered SQL intelligence platform: optimizer, Natural Language to SQL (NL2SQL), Schema Vault, Playground, Analytics, and History — all in one unified workspace.
+> **AI-powered SQL intelligence platform** — optimizer, Natural Language to SQL (NL2SQL), Schema Vault, Playground, Analytics, and History — all in one unified workspace.
 
-## What's New in v6
+---
+
+## 🚀 What's New in v6
 
 | Fix | What Changed |
 |-----|-------------|
-| AI engine | `gemini-1.5-flash` primary → `gemini-1.5-flash-8b` → `gemini-pro` fallback chain. Anthropic removed entirely. |
-| Auth middleware | All 9 dashboard pages + 6 API routes now protected — sign-in persists correctly |
-| Universal analytics | Analytics tracks SQL Optimizer, NL2SQL, Schema uploads, Playground runs, and Exports |
-| Universal history | History page shows both SQL optimizations and NL2SQL conversions |
-| Export dialog | Confirmation dialog with format (SQL/CSV/JSON/PDF) and date scope before any download |
-| Schema Vault | DDL char usage meter, Edit DDL mode, 3 example schemas, ER diagram with PK🔑/FK🔗 icons |
-| Dialect panels | Click "{Dialect} Reference" for full strengths, watchouts, key functions, index types |
-| Full forms | PII = Personally Identifiable Information, NL2SQL = Natural Language to SQL, DDL, ER, etc. |
-| Landing page | Home button, How It Works (5 steps), Step-by-Step Guide, all 12 domains, complete FAQ with glossary |
-| Build fixed | `postinstall: prisma generate` + `next build` in buildCommand. ESLint `no-unescaped-entities` off. |
-| Prisma schema | New `Conversion` model tracks feature usage across all tools |
+| 🤖 AI engine | `gemini-1.5-flash` → `gemini-1.5-flash-8b` → `gemini-pro` fallback chain. Anthropic completely removed. |
+| 🔐 Auth middleware | All 9 dashboard pages + 6 API routes protected — sign-in persists across all features |
+| 📊 Universal analytics | Tracks SQL Optimizer, NL2SQL, Schema uploads, Playground runs, and Exports |
+| 📜 Universal history | Shows both SQL optimizations AND NL2SQL conversions in one list |
+| 💾 Export dialog | Confirmation dialog: choose format (SQL/CSV/JSON/PDF) + date scope before any download |
+| 🗄️ Schema Vault | DDL char usage meter, Edit DDL mode, 3 example schemas, PK🔑/FK🔗 ER diagram |
+| 📖 Dialect panels | "{Dialect} Reference" button → full strengths, watchouts, functions, index types |
+| 🔤 Full forms | PII = Personally Identifiable Information, NL2SQL = Natural Language to SQL, DDL, ER, etc. |
+| 🏠 Landing page | Home button in nav, How It Works (5 steps), Step-by-Step Guide, 12 domains, FAQ glossary |
+| 🔧 Build fixed | `postinstall: prisma generate` · ESLint `no-unescaped-entities` off · `serverExternalPackages` key |
+| 🗃️ Prisma schema | New `Conversion` model — tracks every feature action universally |
+| 🐛 Syntax fixed | Template literal placeholders · `fontWeight={700}` SVG · COLS edge-case guard |
 
-## Environment Variables
+---
+
+## 🔑 Environment Variables
 
 ```env
-# Required — get free key at aistudio.google.com/apikey
+# ✅ Required — free key at aistudio.google.com/apikey
 GEMINI_API_KEY=your_gemini_api_key_here
 
-# Neon PostgreSQL (from neon.tech dashboard)
+# 🐘 Neon PostgreSQL (from neon.tech dashboard → Connection Details)
 DATABASE_URL=postgresql://user:pass@host/db?sslmode=require
 DIRECT_URL=postgresql://user:pass@host/db?sslmode=require
 
-# NextAuth (generate: openssl rand -base64 32)
-NEXTAUTH_SECRET=your_32_character_random_secret_here
+# 🔒 NextAuth secret (generate: openssl rand -base64 32)
+NEXTAUTH_SECRET=your_32_char_random_secret
 
-# Your deployed URL
+# 🌐 Your deployed app URL (no trailing slash)
 NEXTAUTH_URL=https://your-app.vercel.app
 ```
 
-## Deploy to Vercel
+---
+
+## 🚢 Deploy to Vercel (3 steps)
 
 ### Step 1 — Push to GitHub
 ```bash
@@ -45,87 +52,133 @@ git push -u origin main
 ```
 
 ### Step 2 — Vercel settings
-1. Import the repo on vercel.com
-2. Framework: Next.js (auto-detected)
-3. Add all 5 environment variables above
-4. Deploy
+1. Import the repo on **vercel.com → New Project**
+2. Framework: **Next.js** (auto-detected)
+3. Add all **5 environment variables** from above
+4. Click **Deploy**
 
-### Step 3 — Run DB migration once
-After the first deploy succeeds:
+### Step 3 — Run DB migration once *(first deploy only)*
 ```bash
 curl -X POST https://your-app.vercel.app/api/migrate \
   -H "Authorization: Bearer YOUR_NEXTAUTH_SECRET"
 ```
-This pushes the Prisma schema to your Neon database (adds the `conversions` table).
+> Pushes the Prisma schema to Neon (adds `conversions` table). Run once per schema change.
 
-## Local Development
+---
+
+## 💻 Local Development
 ```bash
 npm install
 cp .env.example .env.local   # fill in your values
 npx prisma db push           # create tables
-npm run dev                  # http://localhost:3000
+npm run dev                  # → http://localhost:3000
 ```
 
-## Features
+---
 
-### SQL Optimizer
-- Paste any SQL → AI rewrites with full analysis
-- 5 dialects: PostgreSQL, MySQL, SQLite, BigQuery, MS SQL Server
-- Live Scanner: instant anti-pattern detection as you type
-- Dialect Reference panel: strengths, functions, index types per dialect
-- PII auto-redaction (emails, SSNs, card numbers)
-- Before/After SQL view with copy button
-- Issues, improvements, index recommendations, security alerts
-- Sample queries per dialect
+## ✨ Features
 
-### Natural Language to SQL (NL2SQL)
-- Plain English → production-ready SQL
-- Schema-aware when Schema Vault DDL is loaded
-- 8 domain × 3 example prompts = 24 examples
-- Tracks every conversion in History and Analytics
+### ⚡ SQL Optimizer
+- Paste any SQL → AI rewrites with **full analysis** in seconds
+- **5 dialects**: PostgreSQL, MySQL, SQLite, BigQuery, MS SQL Server
+- **Live Scanner** — instant anti-pattern detection as you type
+- **Dialect Reference panel** — strengths, watchouts, key functions, index types per dialect
+- **PII auto-redaction** — Personally Identifiable Information (emails, SSNs, card numbers) removed before processing
+- **Before/After SQL view** — split/before/after toggle with copy buttons
+- Issues detected, improvements applied, index recommendations, security alerts
+- **Sample queries per dialect** — 2–3 real examples for each
 
-### Schema Vault
-- Paste DDL → auto-parsed ER diagram
-- PK (Primary Key) 🔑 and FK (Foreign Key) 🔗 icons
-- Char usage meter: used / remaining / token estimate
-- Edit DDL mode: in-place editable
-- 3 example schemas: E-Commerce, Healthcare, HR
-- Schema context injected into NL2SQL automatically
+### 🧠 Natural Language to SQL (NL2SQL)
+- Plain English → production-ready SQL for any dialect
+- **Schema-aware** when Schema Vault DDL is loaded → zero hallucinations
+- **8 domain × 3 example prompts** = 24 curated examples
+- Every conversion tracked in History and Analytics
 
-### SQL Playground
+### 🗄️ Schema Vault
+- Paste DDL (Data Definition Language) → auto-parsed visual Entity-Relationship (ER) diagram
+- **Primary Key (PK) 🔑** and **Foreign Key (FK) 🔗** icons auto-detected
+- **Char usage meter** — used / remaining / estimated token count
+- **Edit DDL mode** — in-place editable without losing the diagram
+- **3 example schemas** — E-Commerce, Healthcare, HR
+- Schema context **auto-injected into NL2SQL** for accurate generation
+
+### 🖥️ SQL Playground
 - In-browser SQL execution (no backend needed)
 - Pre-loaded sample databases per domain
 - Query history with copy buttons
-- Results grid with export
+- Results grid with row count
 
-### Analytics (Universal)
-- KPIs: total optimizations, NL2SQL count, avg gain, issues fixed, streak, total actions
-- Feature usage breakdown: all 5 features with bar chart
-- 14-day optimizer trend (dual-axis: queries + avg gain)
-- Feature usage radar chart
-- Domain breakdown bar chart
-- Issue severity pie chart
-- Top 5 performance wins
+### 📊 Analytics (Universal — all features)
+- **6 KPIs** — total optimizations, NL2SQL count, avg gain, issues fixed, day streak, total actions
+- **Feature usage breakdown** — all 5 tools with percentage bars
+- **14-day activity chart** — dual axis: query count + avg performance gain
+- **Feature radar chart** — visual balance of which tools you use most
+- **Domain breakdown** bar chart + top 5 performance wins
+- **Issue severity pie chart** — critical/high/medium/low
 
-### History (Universal)
-- SQL optimizations AND NL2SQL conversions in one list
-- Filter: All / SQL Optimizer / NL to SQL
-- Search across title, domain, prompt text
-- Expandable cards with full SQL and copy button
-- Pagination (10 per page)
+### 📜 History (Universal — all features)
+- SQL Optimizer results **and** NL2SQL conversions in one unified list
+- **Filter** — All Features / SQL Optimizer / NL to SQL
+- **Full-text search** across title, domain, prompt
+- Expandable cards with complete SQL + copy button
+- **Pagination** — 10 results per page
 
-### Settings & Export
-- Export confirmation dialog: choose format + date scope + features before download
-- 4 export formats: SQL (queries only), CSV (metadata), JSON (full structured), PDF (report)
-- 4 date scopes: All, Last 30 days, Last 7 days, Favorites
-- No API keys or internal URLs exposed in the UI
+### ⚙️ Settings & Export
+- **Export dialog** — choose format, date range, and features before any download starts
+- **4 export formats**: SQL (queries only), CSV (spreadsheet), JSON (full data), PDF (text report)
+- **4 date scopes**: All history, Last 30 days, Last 7 days, Favorites only
+- **No API keys or internal URLs** exposed in the UI
 
-## Tech Stack
-- **Next.js 14** (App Router)
-- **Prisma** + **Neon PostgreSQL** (serverless)
-- **Google Gemini AI** (gemini-1.5-flash, free tier)
-- **NextAuth v4** (Google OAuth + credentials)
-- **Tailwind CSS** + **Framer Motion**
-- **Recharts** (analytics charts)
-- **Lucide React** (icons)
-- **Vercel** (deployment)
+---
+
+## 🛠️ Tech Stack
+
+| Layer | Technology |
+|-------|------------|
+| Framework | Next.js 14 (App Router) |
+| Database | Prisma + Neon PostgreSQL (serverless) |
+| AI Engine | Google Gemini (gemini-1.5-flash, free tier) |
+| Auth | NextAuth v4 (credentials + OAuth) |
+| Styling | Tailwind CSS + Framer Motion |
+| Charts | Recharts |
+| Icons | Lucide React |
+| Deployment | Vercel |
+
+---
+
+## 🏗️ Project Structure
+
+```
+app/
+├── (auth)/login, register       # Auth pages
+├── (dashboard)/
+│   ├── dashboard/               # Home with all 8 feature cards
+│   ├── optimizer/               # SQL Optimizer + dialect panels
+│   ├── nl2sql/                  # Natural Language to SQL
+│   ├── schema/                  # Schema Vault + ER diagram
+│   ├── playground/              # In-browser SQL runner
+│   ├── examples/                # 99 query example library
+│   ├── history/                 # Universal history
+│   ├── analytics/               # Universal analytics
+│   └── settings/                # Export + account
+├── api/
+│   ├── optimize/                # AI optimization endpoint
+│   ├── nl2sql/                  # AI NL→SQL endpoint
+│   ├── analytics/               # Universal stats
+│   ├── export/                  # SQL/CSV/JSON/PDF export
+│   ├── conversions/             # Feature usage tracking
+│   ├── queries/                 # Query history CRUD
+│   ├── migrate/                 # One-time DB schema push
+│   └── health/                  # Health check
+├── page.tsx                     # Landing page (Home)
+lib/
+├── ai-engine.ts                 # Gemini 3-model fallback
+├── auth.ts                      # NextAuth config
+└── db.ts                        # Prisma + Neon client
+middleware.ts                    # Route protection
+prisma/schema.prisma             # User, Query, Conversion models
+```
+
+---
+
+*SmartQuery v6 — built with Next.js 14, Gemini AI, Neon PostgreSQL, and Vercel*
