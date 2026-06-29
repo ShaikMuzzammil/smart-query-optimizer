@@ -1,232 +1,269 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Brain, Copy, Check, RefreshCw, Database, ArrowRight, ChevronRight } from "lucide-react";
 import Link from "next/link";
 
 const DIALECTS = ["PostgreSQL", "MySQL", "SQLite", "BigQuery", "MS SQL Server"];
 
-const DOMAIN_PROMPTS: Record<string, { icon: string; prompts: string[] }> = {
-  "E-Commerce": { icon: "🛒", prompts: [
-    "Show the top 10 customers by total spend last month, grouped by country",
-    "Find all orders placed in Q4 2024 where the discount was more than 20%",
-    "Calculate monthly revenue per product category for the last 6 months ordered by revenue",
-  ]},
-  "Healthcare": { icon: "🏥", prompts: [
-    "Find all patients who had lab tests flagged as abnormal in the last 30 days",
-    "List doctors with more than 50 appointments in January 2024 by specialty",
-    "Show patients who were prescribed the same drug more than 3 times in a month",
-  ]},
-  "Finance": { icon: "💰", prompts: [
-    "Calculate monthly revenue per product category for Q1 2024 ordered by revenue",
-    "Find all accounts with a balance drop of more than 50% compared to last month",
-    "Show all transactions above 10000 flagged as suspicious in the last 7 days",
-  ]},
-  "HR & Payroll": { icon: "👔", prompts: [
-    "List employees with no performance review in the past 6 months by department",
-    "Find departments where average salary is above company average",
-    "Show top 5 departments by headcount growth in 2024",
-  ]},
-  "SaaS": { icon: "📱", prompts: [
-    "Show daily active users for the past 14 days with 7-day rolling average",
-    "Find all users who signed up but never completed onboarding",
-    "Calculate monthly recurring revenue by plan tier for the last quarter",
-  ]},
-  "Logistics": { icon: "📦", prompts: [
-    "Find all shipments delayed more than 3 days with carrier and route info",
-    "Show warehouse utilization percentage by region this week",
-    "List the top 10 routes by average delivery time in the last 30 days",
-  ]},
-  "Education": { icon: "🎓", prompts: [
-    "Show all students who scored below 60% in more than 2 subjects this semester",
-    "Find courses with enrollment growth greater than 20% year over year",
-    "List instructors with average student rating above 4.5 in the last term",
-  ]},
-  "Gaming": { icon: "🎮", prompts: [
-    "Find players who completed 10+ matches in the last 7 days and their win rate",
-    "Show the top 20 players by score with their rank and percentile",
-    "List all players who made in-app purchases this month grouped by amount tier",
-  ]},
-};
+const EXAMPLE_PROMPTS: { domain: string; emoji: string; prompts: string[] }[] = [
+  { domain: "E-Commerce",  emoji: "🛒", prompts: ["Show the top 10 customers by total spend last month, grouped by country", "Find all products with less than 5 items in stock, sorted by price descending", "Get monthly revenue per product category for the last 6 months"] },
+  { domain: "Healthcare",  emoji: "🏥", prompts: ["Find all patients who had lab tests flagged as abnormal in the last 30 days", "List doctors with more than 50 appointments this month, by specialty", "Show patients with no appointment scheduled in the next 14 days"] },
+  { domain: "Finance",     emoji: "💰", prompts: ["Calculate monthly revenue per product category for Q1 2024, ordered by revenue", "Find all transactions above $10,000 in the last 7 days with customer details", "Get the top 5 highest-spending accounts by total transaction volume"] },
+  { domain: "HR",          emoji: "👥", prompts: ["List employees with no performance review in the past 6 months, by department", "Show average salary by department, ordered highest to lowest", "Find all employees hired in the last 90 days who report to a specific manager"] },
+  { domain: "SaaS",        emoji: "📊", prompts: ["Show daily active users for the past 14 days with a 7-day rolling average", "Find users who signed up but never logged in after day 1", "Get churn rate per month for the last 6 months"] },
+  { domain: "Logistics",   emoji: "🚚", prompts: ["Find all shipments delayed more than 3 days with carrier and route info", "List the top 10 routes by average delivery time, slowest first", "Get all orders with more than 2 delivery attempts that are still undelivered"] },
+  { domain: "Education",   emoji: "🎓", prompts: ["Find students enrolled in more than 3 courses this semester with their GPA", "List courses with the highest dropout rate in the last year", "Show all students with no grades recorded for any course this term"] },
+  { domain: "Gaming",      emoji: "🎮", prompts: ["Show the top 20 players by score this month, grouped by region", "Find all players who achieved a new personal best in the last 7 days", "Get average session length per game mode for the past 30 days"] },
+];
+
+interface NL2SQLResult {
+  sql: string;
+  explanation: string;
+  assumptions: string[];
+  tablesNeeded: string[];
+  dialect: string;
+}
+
+function SqlBlock({ sql, label = "SQL" }: { sql: string; label?: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = () => {
+    navigator.clipboard.writeText(sql);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+  return (
+    <div className="rounded-xl overflow-hidden border border-sky-500/15 bg-[#0d0d1f]">
+      <div className="flex items-center justify-between px-4 py-2 border-b border-sky-500/10 bg-[#0a0a1e]">
+        <span className="text-[10px] font-bold tracking-widest text-slate-500">{label}</span>
+        <div className="flex items-center gap-2">
+          <button onClick={copy} className="flex items-center gap-1.5 text-[10px] text-slate-500 hover:text-sky-300 transition-colors px-2 py-1 rounded-lg hover:bg-sky-500/10">
+            {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+            {copied ? "Copied!" : "Copy SQL"}
+          </button>
+          <Link href="/optimizer" className="flex items-center gap-1 text-[10px] text-slate-500 hover:text-violet-300 transition-colors px-2 py-1 rounded-lg hover:bg-violet-500/10">
+            <ArrowRight className="w-3 h-3" />Optimize
+          </Link>
+        </div>
+      </div>
+      <pre className="p-4 text-xs font-mono text-slate-300 leading-relaxed overflow-x-auto whitespace-pre-wrap">{sql}</pre>
+    </div>
+  );
+}
 
 export default function NL2SQLPage() {
-  const [dialect, setDialect] = useState("PostgreSQL");
   const [prompt, setPrompt] = useState("");
-  const [domain, setDomain] = useState("E-Commerce");
+  const [dialect, setDialect] = useState("PostgreSQL");
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<Record<string, unknown> | null>(null);
-  const [error, setError] = useState("");
-  const [schemaCtx, setSchemaCtx] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [result, setResult] = useState<NL2SQLResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [schemaLoaded, setSchemaLoaded] = useState(false);
+  const [schemaContext, setSchemaContext] = useState<string | undefined>();
 
-  // Check for saved schema from Schema Vault
-  const checkSchema = () => {
-    const saved = localStorage.getItem("sqo_schema_ddl");
-    if (saved) setSchemaCtx(saved);
-  };
+  useEffect(() => {
+    const ctx = sessionStorage.getItem("smartquery_schema_context");
+    if (ctx) { setSchemaContext(ctx); setSchemaLoaded(true); }
+  }, []);
 
-  const convert = async () => {
-    if (!prompt.trim()) return;
-    setLoading(true); setError(""); setResult(null);
+  const charCount = prompt.length;
+
+  const handleConvert = async () => {
+    if (!prompt.trim() || prompt.trim().length < 5) return;
+    setLoading(true);
+    setError(null);
+    setResult(null);
     try {
       const res = await fetch("/api/nl2sql", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, dialect, domain, schemaContext: schemaCtx || undefined }),
+        body: JSON.stringify({ prompt, dialect, schemaContext }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Conversion failed");
-      setResult(data);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed");
-    } finally { setLoading(false); }
+      if (!res.ok) { setError(data.error ?? "Conversion failed — please try again."); return; }
+      setResult(data as NL2SQLResult);
+    } catch {
+      setError("Network error — please check your connection and try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const copyText = (text: string) => {
-    navigator.clipboard.writeText(text);
-    setCopied(true); setTimeout(() => setCopied(false), 2000);
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); handleConvert(); }
   };
 
-  const domainList = Object.entries(DOMAIN_PROMPTS);
+  const removeSchema = () => {
+    setSchemaContext(undefined);
+    setSchemaLoaded(false);
+    sessionStorage.removeItem("smartquery_schema_context");
+  };
 
   return (
-    <div style={{ padding: "28px 28px 64px", maxWidth: 1400, margin: "0 auto" }}>
-      <div style={{ marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+    <div className="p-4 lg:p-6 max-w-[1400px] mx-auto">
+      <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
         <div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-            <h1 style={{ fontSize: 26, fontWeight: 800, color: "#fff" }}>Natural Language to SQL</h1>
-            <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 4, background: "rgba(124,58,237,0.2)", color: "#c084fc", fontWeight: 700 }}>NEW</span>
-          </div>
-          <p style={{ color: "#7c6f94", fontSize: 14 }}>Describe what data you need in plain English — get production-ready SQL for any dialect</p>
+          <h1 className="text-xl font-black flex items-center gap-2">
+            <Brain className="w-5 h-5 text-sky-400" />Natural Language to SQL
+            <span className="text-xs font-normal px-2 py-0.5 bg-sky-500/15 text-sky-400 border border-sky-500/25 rounded-lg">NEW</span>
+          </h1>
+          <p className="text-slate-400 text-xs mt-0.5">
+            Describe what data you need in plain English — get production-ready SQL for any dialect
+          </p>
         </div>
-        <Link href="/optimizer" style={{ fontSize: 13, color: "#7c6f94", textDecoration: "none", padding: "8px 14px", border: "1px solid rgba(45,15,78,0.6)", borderRadius: 8 }}>
-          ⚡ Switch to SQL Optimizer
-        </Link>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 360px", gap: 24 }}>
-        {/* LEFT — Input */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          {/* Schema Context Banner */}
-          <div style={{ background: schemaCtx ? "rgba(16,185,129,0.08)" : "rgba(45,15,78,0.3)", border: `1px solid ${schemaCtx ? "rgba(16,185,129,0.2)" : "rgba(45,15,78,0.6)"}`, borderRadius: 12, padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ fontSize: 18 }}>🗄️</span>
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: schemaCtx ? "#10b981" : "#e2d9f3" }}>
-                  {schemaCtx ? "Schema context loaded from Schema Vault" : "No schema context — using generic table names"}
-                </div>
-                <div style={{ fontSize: 11, color: "#7c6f94" }}>
-                  {schemaCtx ? "Your exact table/column names will be used — no hallucinations" : "Load a schema from Schema Vault to prevent hallucinations"}
-                </div>
+      <div className="grid lg:grid-cols-3 gap-5">
+        {/* LEFT: Input + result */}
+        <div className="lg:col-span-2 space-y-4">
+          {/* Schema context banner */}
+          {schemaLoaded && (
+            <div className="p-3 bg-emerald-500/8 border border-emerald-500/20 rounded-2xl flex items-center justify-between">
+              <div className="flex items-center gap-2 text-xs text-emerald-300">
+                <Database className="w-4 h-4 flex-shrink-0" />
+                Schema context loaded from Schema Vault — your exact table/column names will be used, no hallucinations
+              </div>
+              <button onClick={removeSchema} className="text-[10px] text-slate-500 hover:text-red-400 transition-colors ml-3 flex-shrink-0">
+                Remove
+              </button>
+            </div>
+          )}
+
+          {!schemaLoaded && (
+            <div className="p-3 bg-violet-500/8 border border-violet-500/15 rounded-2xl flex items-center justify-between">
+              <div className="text-[11px] text-slate-400">
+                No schema loaded — generic table names will be used. Load your DDL in{" "}
+                <Link href="/schema" className="text-emerald-400 hover:underline">Schema Vault</Link>{" "}
+                for accurate generation.
               </div>
             </div>
-            {schemaCtx ? (
-              <button onClick={() => setSchemaCtx(null)} style={{ fontSize: 12, color: "#7c6f94", background: "none", border: "none", cursor: "pointer" }}>Remove</button>
-            ) : (
-              <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={checkSchema} style={{ fontSize: 12, color: "#c084fc", background: "rgba(124,58,237,0.15)", border: "1px solid rgba(124,58,237,0.2)", borderRadius: 6, padding: "4px 10px", cursor: "pointer" }}>Load from Vault</button>
-                <Link href="/schema" style={{ fontSize: 12, color: "#7c6f94", textDecoration: "none", padding: "4px 10px", border: "1px solid rgba(45,15,78,0.5)", borderRadius: 6 }}>Open Schema Vault →</Link>
-              </div>
-            )}
-          </div>
+          )}
 
-          {/* Dialect Selector */}
-          <div style={{ background: "rgba(26,0,51,0.6)", border: "1px solid rgba(45,15,78,0.8)", borderRadius: 14, padding: 16 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "#7c6f94", letterSpacing: 2, marginBottom: 10 }}>TARGET SQL DIALECT</div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {DIALECTS.map(d => (
-                <button key={d} onClick={() => setDialect(d)} style={{
-                  padding: "7px 16px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13,
-                  background: dialect === d ? "linear-gradient(135deg,#7c3aed,#9333ea)" : "rgba(45,15,78,0.4)",
-                  color: dialect === d ? "#fff" : "#9ca3af", fontWeight: dialect === d ? 700 : 400, transition: "all 0.15s",
-                }}>{d}</button>
+          {/* Dialect selector */}
+          <div className="glass-card rounded-2xl p-4 border border-sky-500/15">
+            <div className="text-[10px] font-bold text-slate-500 tracking-widest mb-3">TARGET SQL DIALECT</div>
+            <div className="flex flex-wrap gap-2 mb-4">
+              {DIALECTS.map((d) => (
+                <button key={d} onClick={() => setDialect(d)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all border ${
+                    dialect === d
+                      ? "bg-sky-600 border-sky-500 text-white"
+                      : "border-sky-500/20 text-slate-400 hover:border-sky-500/50 hover:text-white"
+                  }`}>
+                  {d}
+                </button>
               ))}
             </div>
-          </div>
 
-          {/* Prompt Input */}
-          <div style={{ background: "rgba(26,0,51,0.6)", border: "1px solid rgba(45,15,78,0.8)", borderRadius: 14, overflow: "hidden" }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "#7c6f94", letterSpacing: 2, padding: "14px 16px 8px" }}>DESCRIBE WHAT YOU NEED</div>
-            <textarea value={prompt} onChange={e => setPrompt(e.target.value)}
-              onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); convert(); } }}
-              placeholder='e.g. "Show the top 10 customers by total spend last month, grouped by country"'
-              style={{ width: "100%", minHeight: 160, background: "transparent", border: "none", outline: "none", color: "#e2d9f3", fontSize: 14, fontFamily: "inherit", padding: "8px 16px 16px", resize: "vertical", lineHeight: 1.7 }} />
-            <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 16px", borderTop: "1px solid rgba(45,15,78,0.3)", fontSize: 12, color: "#7c6f94" }}>
-              <span>{prompt.length} chars · {dialect}</span>
-              <span>Command+Enter (Mac) / Ctrl+Enter (Windows)</span>
+            <div className="text-[10px] font-bold text-slate-500 tracking-widest mb-2">DESCRIBE WHAT YOU NEED</div>
+            <textarea
+              value={prompt}
+              onChange={(e) => { setPrompt(e.target.value); setError(null); }}
+              onKeyDown={handleKeyDown}
+              placeholder="e.g. Show the top 10 customers by total spend last month, grouped by country"
+              className="w-full h-36 bg-[#07071a] rounded-xl border border-sky-500/15 text-sm text-slate-200 p-4 resize-none focus:outline-none focus:border-sky-500/40 placeholder:text-slate-700 leading-relaxed"
+            />
+            <div className="flex items-center justify-between mt-2 text-[10px] text-slate-600">
+              <span>{charCount} chars · {dialect}</span>
+              <span>⌘+Enter / Ctrl+Enter to convert</span>
             </div>
-          </div>
 
-          <button onClick={convert} disabled={loading || !prompt.trim()} style={{
-            width: "100%", padding: "15px", borderRadius: 12, border: "none", cursor: prompt.trim() ? "pointer" : "not-allowed",
-            background: prompt.trim() ? "linear-gradient(135deg,#7c3aed,#9333ea)" : "rgba(45,15,78,0.3)",
-            color: prompt.trim() ? "#fff" : "#7c6f94", fontSize: 15, fontWeight: 700,
-            display: "flex", alignItems: "center", justifyContent: "center", gap: 10, transition: "all 0.2s",
-            boxShadow: prompt.trim() ? "0 0 24px rgba(124,58,237,0.4)" : "none",
-          }}>
-            {loading ? <><span style={{ width: 18, height: 18, border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "#fff", borderRadius: "50%", animation: "spin 0.8s linear infinite", display: "inline-block" }} /> Converting...</> : "✦ Convert to SQL"}
-          </button>
+            <button onClick={handleConvert} disabled={loading || !prompt.trim()}
+              className="mt-3 w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all disabled:opacity-50 bg-gradient-to-r from-sky-600 to-sky-500 hover:from-sky-500 hover:to-sky-400 text-white">
+              {loading
+                ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Converting…</>
+                : <><Brain className="w-4 h-4" />Convert to SQL</>
+              }
+            </button>
+          </div>
 
           {/* Error */}
           {error && (
-            <div style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 12, padding: "16px 20px", display: "flex", gap: 12, alignItems: "flex-start" }}>
-              <span style={{ fontSize: 18, color: "#f87171" }}>⚠</span>
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: "#fca5a5", marginBottom: 4 }}>Conversion Unavailable</div>
-                <div style={{ fontSize: 12, color: "#9ca3af" }}>{error}</div>
-              </div>
-              <button onClick={convert} style={{ marginLeft: "auto", padding: "6px 14px", borderRadius: 8, background: "rgba(124,58,237,0.2)", border: "1px solid rgba(124,58,237,0.3)", color: "#c084fc", cursor: "pointer", fontSize: 12 }}>↺ Retry</button>
+            <div className="glass-card rounded-2xl p-6 border border-amber-500/20 flex flex-col items-center text-center">
+              <div className="text-amber-400 font-bold mb-2">Conversion Unavailable</div>
+              <p className="text-slate-400 text-sm mb-4">{error}</p>
+              <button onClick={handleConvert}
+                className="flex items-center gap-2 px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white text-sm font-semibold rounded-xl transition-all">
+                <RefreshCw className="w-4 h-4" />Retry
+              </button>
             </div>
           )}
 
           {/* Result */}
-          {result && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 12, animation: "fadeIn 0.3s ease" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <span style={{ fontSize: 12, padding: "3px 10px", borderRadius: 6, background: "rgba(16,185,129,0.12)", color: "#10b981", fontWeight: 600 }}>✓ Converted</span>
-                <span style={{ fontSize: 12, color: "#7c6f94" }}>{(result.complexity as string)} · {(result.tables as string[]).join(", ")}</span>
-                <span style={{ fontSize: 11, color: "#4a3d5c", marginLeft: "auto" }}>via {result.modelUsed as string}</span>
-              </div>
+          <AnimatePresence>
+            {result && (
+              <motion.div key="result" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+                <SqlBlock sql={result.sql} label={`GENERATED ${result.dialect} — PRODUCTION READY`} />
 
-              <div style={{ background: "rgba(26,0,51,0.6)", border: "1px solid rgba(45,15,78,0.8)", borderRadius: 12, overflow: "hidden" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", borderBottom: "1px solid rgba(45,15,78,0.4)" }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: "#10b981", letterSpacing: 1 }}>GENERATED SQL — {dialect}</span>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <button onClick={() => copyText(result.sql as string)} style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid rgba(45,15,78,0.5)", background: "none", color: copied ? "#10b981" : "#7c6f94", cursor: "pointer", fontSize: 12 }}>
-                      {copied ? "✓ Copied!" : "📋 Copy"}
-                    </button>
-                    <Link href={`/optimizer?sql=${encodeURIComponent(result.sql as string)}`} style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid rgba(124,58,237,0.3)", background: "rgba(124,58,237,0.1)", color: "#c084fc", cursor: "pointer", fontSize: 12, textDecoration: "none" }}>
-                      ⚡ Optimize
-                    </Link>
+                {result.explanation && (
+                  <div className="glass-card rounded-2xl p-4 border border-sky-500/10">
+                    <div className="text-[10px] font-bold text-sky-400 tracking-widest mb-2">WHAT THIS QUERY DOES</div>
+                    <p className="text-sm text-slate-300 leading-relaxed">{result.explanation}</p>
                   </div>
-                </div>
-                <pre style={{ padding: 16, fontSize: 12, color: "#e2d9f3", overflow: "auto", maxHeight: 320, margin: 0, lineHeight: 1.7 }}>
-                  {result.sql as string}
-                </pre>
-              </div>
+                )}
 
-              <div style={{ background: "rgba(26,0,51,0.4)", border: "1px solid rgba(45,15,78,0.5)", borderRadius: 10, padding: 14 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#7c3aed", marginBottom: 6, letterSpacing: 1 }}>EXPLANATION</div>
-                <p style={{ fontSize: 13, color: "#b8a9cc", lineHeight: 1.7 }}>{result.explanation as string}</p>
-              </div>
-            </div>
-          )}
+                {result.tablesNeeded?.length > 0 && (
+                  <div className="glass-card rounded-2xl p-4 border border-emerald-500/10">
+                    <div className="text-[10px] font-bold text-emerald-400 tracking-widest mb-2">TABLES USED</div>
+                    <div className="flex flex-wrap gap-2">
+                      {result.tablesNeeded.map((t) => (
+                        <code key={t} className="text-xs bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 px-2 py-1 rounded-lg">{t}</code>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {result.assumptions?.length > 0 && (
+                  <div className="glass-card rounded-2xl p-4 border border-amber-500/10">
+                    <div className="text-[10px] font-bold text-amber-400 tracking-widest mb-2">ASSUMPTIONS MADE</div>
+                    <ul className="space-y-1">
+                      {result.assumptions.map((a, i) => (
+                        <li key={i} className="text-xs text-slate-400 flex items-start gap-2">
+                          <span className="text-amber-400 flex-shrink-0">·</span>{a}
+                        </li>
+                      ))}
+                    </ul>
+                    {!schemaLoaded && (
+                      <div className="mt-3 p-2 bg-emerald-500/8 border border-emerald-500/15 rounded-xl text-[11px] text-emerald-300">
+                        Load your schema in Schema Vault to eliminate assumptions and use your real table names.
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div className="flex gap-2">
+                  <button onClick={() => { setResult(null); setPrompt(""); }}
+                    className="flex-1 py-2.5 rounded-xl border border-violet-500/15 text-xs text-slate-400 hover:text-white hover:border-violet-500/40 transition-all">
+                    New Conversion
+                  </button>
+                  <Link href="/optimizer"
+                    className="flex-1 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition-all">
+                    <ArrowRight className="w-3.5 h-3.5" />Optimize This SQL
+                  </Link>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
-        {/* RIGHT — Example Prompts */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div style={{ background: "rgba(26,0,51,0.6)", border: "1px solid rgba(45,15,78,0.8)", borderRadius: 14, padding: 20, flex: 1, overflow: "auto", maxHeight: "80vh" }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "#7c3aed", letterSpacing: 2, marginBottom: 16 }}>EXAMPLE PROMPTS</div>
-            {domainList.map(([dom, { icon, prompts }]) => (
-              <div key={dom} style={{ marginBottom: 20 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: "#c084fc", marginBottom: 8 }}>{icon} {dom}</div>
-                {prompts.map((p, i) => (
-                  <div key={i} onClick={() => { setPrompt(p); setDomain(dom); }}
-                    style={{ padding: "10px 12px", borderRadius: 8, marginBottom: 6, cursor: "pointer", background: "rgba(45,15,78,0.3)", border: "1px solid rgba(45,15,78,0.4)", transition: "all 0.15s" }}
-                    onMouseOver={e => { e.currentTarget.style.borderColor = "#7c3aed"; e.currentTarget.style.background = "rgba(124,58,237,0.1)"; }}
-                    onMouseOut={e => { e.currentTarget.style.borderColor = "rgba(45,15,78,0.4)"; e.currentTarget.style.background = "rgba(45,15,78,0.3)"; }}>
-                    <p style={{ fontSize: 12, color: "#b8a9cc", lineHeight: 1.5, margin: 0 }}>{p}</p>
-                    <span style={{ fontSize: 10, color: "#7c3aed", marginTop: 4, display: "block" }}>→ Use this prompt</span>
-                  </div>
-                ))}
+        {/* RIGHT: Example prompts */}
+        <div className="space-y-3">
+          <div className="text-[10px] font-bold text-slate-500 tracking-widest">EXAMPLE PROMPTS</div>
+          <div className="space-y-3 max-h-[700px] overflow-y-auto pr-1">
+            {EXAMPLE_PROMPTS.map((group) => (
+              <div key={group.domain} className="glass-card rounded-2xl p-4 border border-violet-500/10">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-base">{group.emoji}</span>
+                  <span className="text-xs font-bold text-violet-300">{group.domain}</span>
+                </div>
+                <div className="space-y-1.5">
+                  {group.prompts.map((p) => (
+                    <button key={p} onClick={() => { setPrompt(p); setResult(null); setError(null); }}
+                      className="w-full text-left text-[11px] text-slate-400 hover:text-white hover:bg-violet-500/8 rounded-xl p-2 transition-all border border-transparent hover:border-violet-500/15 flex items-start gap-2 group">
+                      <ChevronRight className="w-3 h-3 text-violet-500 flex-shrink-0 mt-0.5 group-hover:text-violet-300 transition-colors" />
+                      {p}
+                    </button>
+                  ))}
+                </div>
               </div>
             ))}
           </div>

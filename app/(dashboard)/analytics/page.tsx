@@ -1,197 +1,278 @@
 "use client";
-import { useEffect, useState } from "react";
-import { RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer, PieChart, Pie, Cell, Tooltip, BarChart, Bar, XAxis, YAxis } from "recharts";
+import useSWR from "swr";
+import { fetcher } from "@/hooks/useSwrFetcher";
+import { motion } from "framer-motion";
+import Link from "next/link";
+import {
+  Zap, Brain, Database, Terminal, FileDown, TrendingUp,
+  Flame, BarChart3, AlertTriangle, Target, Clock, Award,
+} from "lucide-react";
+import {
+  ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
+  BarChart, Bar, PieChart, Pie, Cell, Legend, RadarChart, Radar, PolarGrid,
+  PolarAngleAxis, PolarRadiusAxis,
+} from "recharts";
 
-const COLORS = ["#7c3aed", "#06b6d4", "#10b981", "#f59e0b", "#ec4899"];
+const DOMAIN_COLORS = [
+  "#7c3aed","#06d6a0","#fbbf24","#38bdf8","#f72585",
+  "#f97316","#10b981","#8b5cf6","#ef4444","#14b8a6","#a855f7","#22d3ee",
+];
 
-export default function AnalyticsPage() {
-  const [stats, setStats] = useState<Record<string, unknown> | null>(null);
-  const [loading, setLoading] = useState(true);
+const SEVERITY_COLORS: Record<string, string> = {
+  critical: "#ef4444", high: "#f97316", medium: "#fbbf24", low: "#06d6a0",
+};
 
-  useEffect(() => {
-    fetch("/api/stats").then(r => r.json()).then(d => { setStats(d); setLoading(false); }).catch(() => setLoading(false));
-  }, []);
-
-  if (loading) return (
-    <div style={{ padding: 40, display: "flex", justifyContent: "center" }}>
-      <div style={{ textAlign: "center" }}>
-        <div style={{ width: 48, height: 48, border: "3px solid rgba(124,58,237,0.3)", borderTopColor: "#7c3aed", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 16px" }} />
-        <p style={{ color: "#7c6f94" }}>Loading analytics...</p>
-      </div>
+const CustomTooltip = ({ active, payload, label }: any) => {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="bg-[#0a0a1e] border border-violet-500/30 rounded-xl p-3 text-xs shadow-xl">
+      {label && <div className="text-slate-400 mb-1">{label}</div>}
+      {payload.map((p: any, i: number) => (
+        <div key={i} className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full" style={{ background: p.color || p.fill }} />
+          <span className="text-slate-300">{p.name}:</span>
+          <span className="font-semibold text-white">{typeof p.value === "number" ? (p.name?.includes("Gain") ? `+${p.value}%` : p.value) : p.value}</span>
+        </div>
+      ))}
     </div>
   );
+};
 
-  const byType = (stats?.byType as Record<string, number>) || {};
-  const bySeverity = (stats?.bySeverity as Record<string, number>) || {};
-  const byDialect = (stats?.byDialect as Record<string, number>) || {};
-  const byDomain = (stats?.byDomain as Record<string, number>) || {};
-  const total = (stats?.totalConversions as number) || 0;
-  const totalIssues = (stats?.totalIssues as number) || 0;
+export default function AnalyticsPage() {
+  const { data, isLoading, error } = useSWR("/api/analytics", fetcher, {
+    refreshInterval: 30_000,
+  });
 
-  const featureLabels: Record<string, string> = {
-    optimize: "SQL Optimizer",
-    nl2sql: "NL to SQL",
-    schema: "Schema Vault",
-    playground: "Playground",
-    example: "Examples",
-  };
+  const featureCards = [
+    { label: "SQL Optimizations",    value: data?.featureUsage?.optimizer  ?? 0, icon: <Zap className="w-5 h-5" />,      color: "violet",  href: "/optimizer"  },
+    { label: "Natural Lang to SQL",  value: data?.featureUsage?.nl2sql     ?? 0, icon: <Brain className="w-5 h-5" />,    color: "sky",     href: "/nl2sql"     },
+    { label: "Schema Uploads",       value: data?.featureUsage?.schema     ?? 0, icon: <Database className="w-5 h-5" />, color: "emerald", href: "/schema"     },
+    { label: "Playground Runs",      value: data?.featureUsage?.playground ?? 0, icon: <Terminal className="w-5 h-5" />, color: "amber",   href: "/playground" },
+    { label: "Exports",              value: data?.featureUsage?.export     ?? 0, icon: <FileDown className="w-5 h-5" />, color: "pink",    href: "/settings"   },
+  ];
 
-  const radarData = Object.entries(featureLabels).map(([key, label]) => ({
-    feature: label, count: byType[key] || 0, fullMark: Math.max(...Object.values(byType), 1),
+  const radarData = featureCards.map((f) => ({
+    feature: f.label.split(" ")[0],
+    usage: f.value,
   }));
 
-  const severityData = Object.entries(bySeverity).map(([k, v]) => ({ name: k.charAt(0).toUpperCase() + k.slice(1), value: v }));
-  const severityColors: Record<string, string> = { Critical: "#ef4444", High: "#f59e0b", Medium: "#eab308", Low: "#10b981" };
-
-  const dialectData = Object.entries(byDialect).map(([k, v]) => ({ name: k, count: v }));
-  const domainData = Object.entries(byDomain).map(([k, v]) => ({ name: k, count: v })).sort((a, b) => b.count - a.count).slice(0, 8);
+  const CARD = {
+    violet:  "bg-violet-500/15 text-violet-400 border-violet-500/25",
+    sky:     "bg-sky-500/15 text-sky-400 border-sky-500/25",
+    emerald: "bg-emerald-500/15 text-emerald-400 border-emerald-500/25",
+    amber:   "bg-amber-500/15 text-amber-400 border-amber-500/25",
+    pink:    "bg-pink-500/15 text-pink-400 border-pink-500/25",
+  } as Record<string, string>;
 
   const kpis = [
-    { label: "Total Queries", value: total, icon: "📝", color: "#7c3aed" },
-    { label: "SQL Optimized", value: byType.optimize || 0, icon: "⚡", color: "#a855f7" },
-    { label: "NL to SQL", value: byType.nl2sql || 0, icon: "💬", color: "#06b6d4" },
-    { label: "Schemas Analyzed", value: byType.schema || 0, icon: "🗄️", color: "#10b981" },
-    { label: "Playground Runs", value: byType.playground || 0, icon: "▶️", color: "#f59e0b" },
-    { label: "Total Issues Found", value: totalIssues, icon: "🔍", color: "#ef4444" },
+    { label: "Total Optimizations", value: data?.totalQueries ?? 0,         sub: "SQL queries rewritten",       icon: <Zap className="w-4 h-4" />,       c: "violet"  },
+    { label: "Avg Performance Gain",value: `+${data?.avgGain ?? 0}%`,       sub: "across all queries",          icon: <TrendingUp className="w-4 h-4" />, c: "emerald" },
+    { label: "Issues Auto-Fixed",   value: data?.totalIssuesFixed ?? 0,     sub: "anti-patterns removed",       icon: <AlertTriangle className="w-4 h-4"/>,c: "amber"  },
+    { label: "Day Streak",          value: data?.streak ?? 0,               sub: "consecutive active days",     icon: <Flame className="w-4 h-4" />,      c: "violet"  },
+    { label: "Avg Cost Score",      value: data?.avgCostScore ?? "—",       sub: "lower = cheaper queries",     icon: <Target className="w-4 h-4" />,     c: "sky"     },
+    { label: "Total Actions",       value: data?.totalActions ?? 0,         sub: "across all features",         icon: <Award className="w-4 h-4" />,      c: "emerald" },
   ];
 
   return (
-    <div style={{ padding: "28px 28px 64px", maxWidth: 1200, margin: "0 auto" }}>
-      <div style={{ marginBottom: 28 }}>
-        <h1 style={{ fontSize: 26, fontWeight: 800, color: "#fff", marginBottom: 6 }}>Analytics</h1>
-        <p style={{ color: "#7c6f94", fontSize: 14 }}>Universal usage statistics across all features — SQL Optimizer, Natural Language to SQL, Schema Vault, Playground, and Examples</p>
-      </div>
+    <div className="p-6 lg:p-8 max-w-[1500px] mx-auto">
+      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="mb-7">
+        <h1 className="text-2xl font-black mb-1 flex items-center gap-2">
+          <BarChart3 className="w-6 h-6 text-violet-400" />Analytics
+        </h1>
+        <p className="text-slate-400 text-sm">Complete usage statistics across all SmartQuery features</p>
+      </motion.div>
 
-      {/* KPIs */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 14, marginBottom: 28 }}>
-        {kpis.map(k => (
-          <div key={k.label} style={{ background: "rgba(26,0,51,0.6)", border: "1px solid rgba(45,15,78,0.8)", borderRadius: 12, padding: "18px 16px" }}>
-            <div style={{ fontSize: 22, marginBottom: 8 }}>{k.icon}</div>
-            <div style={{ fontSize: 28, fontWeight: 800, color: k.color }}>{k.value.toLocaleString()}</div>
-            <div style={{ fontSize: 12, color: "#7c6f94", marginTop: 4 }}>{k.label}</div>
-          </div>
+      {error && (
+        <div className="glass-card border border-red-500/30 rounded-2xl p-4 mb-6 text-red-400 text-sm">
+          Could not load analytics — please refresh.
+        </div>
+      )}
+
+      {/* KPI grid */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
+        {kpis.map((k, i) => (
+          <motion.div key={k.label} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
+            className="glass-card rounded-2xl p-4 text-center">
+            <div className={`w-8 h-8 rounded-lg flex items-center justify-center mb-2 mx-auto border ${CARD[k.c]}`}>
+              {k.icon}
+            </div>
+            <div className={`text-xl font-black font-mono ${
+              k.c === "violet" ? "text-violet-300" : k.c === "sky" ? "text-sky-300" :
+              k.c === "emerald" ? "text-emerald-300" : k.c === "amber" ? "text-amber-300" : "text-rose-300"
+            }`}>{isLoading ? "…" : k.value}</div>
+            <div className="text-[10px] text-slate-400 font-medium mt-0.5">{k.label}</div>
+            <div className="text-[9px] text-slate-600 mt-0.5 leading-tight">{k.sub}</div>
+          </motion.div>
         ))}
       </div>
 
-      {total === 0 ? (
-        <div style={{ background: "rgba(26,0,51,0.4)", border: "1px dashed rgba(45,15,78,0.6)", borderRadius: 16, padding: 60, textAlign: "center" }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>📊</div>
-          <h3 style={{ color: "#fff", marginBottom: 8 }}>No data yet</h3>
-          <p style={{ color: "#7c6f94", fontSize: 14 }}>Use SQL Optimizer, NL to SQL, or other features to generate analytics data</p>
-        </div>
-      ) : (
-        <div style={{ display: "grid", gap: 20 }}>
-          {/* Row 1: Radar + Severity */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-            <div style={{ background: "rgba(26,0,51,0.6)", border: "1px solid rgba(45,15,78,0.8)", borderRadius: 14, padding: 24 }}>
-              <h3 style={{ fontSize: 14, fontWeight: 700, color: "#fff", marginBottom: 4 }}>Feature Usage Radar</h3>
-              <p style={{ fontSize: 12, color: "#7c6f94", marginBottom: 16 }}>Distribution across all 5 platform features</p>
-              <ResponsiveContainer width="100%" height={260}>
-                <RadarChart data={radarData}>
-                  <PolarGrid stroke="rgba(45,15,78,0.8)" />
-                  <PolarAngleAxis dataKey="feature" tick={{ fill: "#7c6f94", fontSize: 11 }} />
-                  <Radar dataKey="count" stroke="#7c3aed" fill="#7c3aed" fillOpacity={0.3} />
-                </RadarChart>
-              </ResponsiveContainer>
-            </div>
+      {/* Feature usage cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
+        {featureCards.map((f, i) => (
+          <motion.div key={f.label} initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: i * 0.04 }}>
+            <Link href={f.href}
+              className={`glass-card glass-card-hover rounded-2xl p-4 flex flex-col items-center text-center gap-2 border ${CARD[f.color]} group`}>
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center border ${CARD[f.color]}`}>
+                {f.icon}
+              </div>
+              <div className={`text-2xl font-black font-mono ${
+                f.color === "violet" ? "text-violet-300" : f.color === "sky" ? "text-sky-300" :
+                f.color === "emerald" ? "text-emerald-300" : f.color === "amber" ? "text-amber-300" : "text-pink-300"
+              }`}>{isLoading ? "…" : f.value}</div>
+              <div className="text-[11px] text-slate-400 font-medium leading-tight group-hover:text-white transition-colors">{f.label}</div>
+            </Link>
+          </motion.div>
+        ))}
+      </div>
 
-            <div style={{ background: "rgba(26,0,51,0.6)", border: "1px solid rgba(45,15,78,0.8)", borderRadius: 14, padding: 24 }}>
-              <h3 style={{ fontSize: 14, fontWeight: 700, color: "#fff", marginBottom: 4 }}>Issue Severity Distribution</h3>
-              <p style={{ fontSize: 12, color: "#7c6f94", marginBottom: 16 }}>SQL anti-patterns by severity level</p>
-              {severityData.length > 0 ? (
-                <ResponsiveContainer width="100%" height={260}>
-                  <PieChart>
-                    <Pie data={severityData} cx="50%" cy="50%" outerRadius={90} dataKey="value" nameKey="name" label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`} labelLine={false}>
-                      {severityData.map((entry) => (
-                        <Cell key={entry.name} fill={severityColors[entry.name] || "#7c6f94"} />
-                      ))}
-                    </Pie>
-                    <Tooltip contentStyle={{ background: "#1a0033", border: "1px solid #2d0f4e", borderRadius: 8 }} />
-                  </PieChart>
-                </ResponsiveContainer>
-              ) : (
-                <div style={{ height: 260, display: "flex", alignItems: "center", justifyContent: "center", color: "#7c6f94", fontSize: 14 }}>No issue data yet</div>
-              )}
-            </div>
+      {/* Charts row */}
+      <div className="grid lg:grid-cols-3 gap-5 mb-6">
+        {/* 14-day optimizer trend */}
+        <div className="lg:col-span-2 glass-card rounded-2xl p-5">
+          <div className="text-sm font-bold mb-4 flex items-center gap-2">
+            <TrendingUp className="w-4 h-4 text-emerald-400" />SQL Optimizer — 14-Day Trend
           </div>
+          {data?.recentTrend?.length > 0 ? (
+            <ResponsiveContainer width="100%" height={200}>
+              <AreaChart data={data.recentTrend} margin={{ top: 4, right: 4, left: -24, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="grad1" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#7c3aed" stopOpacity={0.5} />
+                    <stop offset="95%" stopColor="#7c3aed" stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id="grad2" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#06d6a0" stopOpacity={0.4} />
+                    <stop offset="95%" stopColor="#06d6a0" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.04)" />
+                <XAxis dataKey="date" tick={{ fill: "#64748b", fontSize: 9 }} axisLine={false} tickLine={false}
+                  tickFormatter={(d) => new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric" })} />
+                <YAxis tick={{ fill: "#64748b", fontSize: 9 }} axisLine={false} tickLine={false} yAxisId="left" />
+                <YAxis tick={{ fill: "#64748b", fontSize: 9 }} axisLine={false} tickLine={false} yAxisId="right" orientation="right" />
+                <Tooltip content={<CustomTooltip />} />
+                <Area yAxisId="left" type="monotone" dataKey="count" name="Queries" stroke="#7c3aed" strokeWidth={2} fill="url(#grad1)" />
+                <Area yAxisId="right" type="monotone" dataKey="avg_gain" name="Avg Gain %" stroke="#06d6a0" strokeWidth={2} fill="url(#grad2)" />
+              </AreaChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-[200px] flex items-center justify-center text-slate-500 text-sm">No data yet — start optimizing!</div>
+          )}
+        </div>
 
-          {/* Row 2: Dialect + Domain */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-            <div style={{ background: "rgba(26,0,51,0.6)", border: "1px solid rgba(45,15,78,0.8)", borderRadius: 14, padding: 24 }}>
-              <h3 style={{ fontSize: 14, fontWeight: 700, color: "#fff", marginBottom: 4 }}>SQL Dialect Usage</h3>
-              <p style={{ fontSize: 12, color: "#7c6f94", marginBottom: 16 }}>Queries per dialect across all features</p>
-              <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={dialectData} layout="vertical" margin={{ left: 60 }}>
-                  <XAxis type="number" tick={{ fill: "#7c6f94", fontSize: 10 }} axisLine={false} tickLine={false} />
-                  <YAxis type="category" dataKey="name" tick={{ fill: "#b8a9cc", fontSize: 12 }} axisLine={false} tickLine={false} />
-                  <Tooltip contentStyle={{ background: "#1a0033", border: "1px solid #2d0f4e", borderRadius: 8 }} />
-                  <Bar dataKey="count" fill="#7c3aed" radius={[0, 4, 4, 0]} />
+        {/* Feature radar */}
+        <div className="glass-card rounded-2xl p-5">
+          <div className="text-sm font-bold mb-4 flex items-center gap-2">
+            <BarChart3 className="w-4 h-4 text-violet-400" />Feature Usage Radar
+          </div>
+          {data?.totalActions > 0 ? (
+            <ResponsiveContainer width="100%" height={200}>
+              <RadarChart data={radarData} margin={{ top: 4, right: 20, left: 20, bottom: 4 }}>
+                <PolarGrid stroke="rgba(255,255,255,.08)" />
+                <PolarAngleAxis dataKey="feature" tick={{ fill: "#94a3b8", fontSize: 10 }} />
+                <PolarRadiusAxis tick={{ fill: "#64748b", fontSize: 8 }} axisLine={false} />
+                <Radar name="Usage" dataKey="usage" stroke="#7c3aed" fill="#7c3aed" fillOpacity={0.3} />
+              </RadarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-[200px] flex items-center justify-center text-slate-500 text-sm text-center">
+              Use multiple features to see radar chart
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Domain breakdown + issue types */}
+      <div className="grid lg:grid-cols-2 gap-5 mb-6">
+        {/* Domain breakdown */}
+        <div className="glass-card rounded-2xl p-5">
+          <div className="text-sm font-bold mb-4 flex items-center gap-2">
+            <Database className="w-4 h-4 text-sky-400" />Optimization by Domain
+          </div>
+          {data?.domainBreakdown?.length > 0 ? (
+            <>
+              <ResponsiveContainer width="100%" height={180}>
+                <BarChart data={data.domainBreakdown.slice(0, 8)} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.04)" />
+                  <XAxis dataKey="domain" tick={{ fill: "#64748b", fontSize: 9 }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fill: "#64748b", fontSize: 9 }} axisLine={false} tickLine={false} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Bar dataKey="count" name="Queries" radius={[4, 4, 0, 0]}>
+                    {data.domainBreakdown.slice(0, 8).map((_: any, index: number) => (
+                      <Cell key={index} fill={DOMAIN_COLORS[index % DOMAIN_COLORS.length]} />
+                    ))}
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
-            </div>
+              <div className="mt-3 space-y-1.5">
+                {data.domainBreakdown.slice(0, 5).map((d: any, i: number) => (
+                  <div key={d.domain} className="flex items-center gap-2 text-xs">
+                    <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: DOMAIN_COLORS[i] }} />
+                    <span className="flex-1 text-slate-300">{d.domain}</span>
+                    <span className="text-slate-400">{d.count} queries</span>
+                    <span className="text-emerald-400 font-mono">+{d.avgGain}%</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="h-[180px] flex items-center justify-center text-slate-500 text-sm">No domain data yet</div>
+          )}
+        </div>
 
-            <div style={{ background: "rgba(26,0,51,0.6)", border: "1px solid rgba(45,15,78,0.8)", borderRadius: 14, padding: 24 }}>
-              <h3 style={{ fontSize: 14, fontWeight: 700, color: "#fff", marginBottom: 4 }}>Top Domains</h3>
-              <p style={{ fontSize: 12, color: "#7c6f94", marginBottom: 16 }}>Most used industry domains</p>
-              {domainData.length > 0 ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {domainData.map((d, i) => (
-                    <div key={d.name} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <span style={{ fontSize: 12, color: "#7c6f94", minWidth: 16 }}>{i + 1}</span>
-                      <span style={{ fontSize: 13, color: "#e2d9f3", flex: 1 }}>{d.name}</span>
-                      <div style={{ width: 120, height: 6, background: "rgba(45,15,78,0.5)", borderRadius: 3 }}>
-                        <div style={{ width: `${Math.round((d.count / domainData[0].count) * 100)}%`, height: "100%", background: COLORS[i % COLORS.length], borderRadius: 3 }} />
-                      </div>
-                      <span style={{ fontSize: 12, color: "#7c6f94", minWidth: 24, textAlign: "right" }}>{d.count}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div style={{ color: "#7c6f94", fontSize: 14 }}>No domain data yet</div>
-              )}
-            </div>
+        {/* Issue severity breakdown */}
+        <div className="glass-card rounded-2xl p-5">
+          <div className="text-sm font-bold mb-4 flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-amber-400" />Issues Fixed by Severity
           </div>
+          {data?.issueTypes?.length > 0 ? (
+            <>
+              <ResponsiveContainer width="100%" height={180}>
+                <PieChart>
+                  <Pie data={data.issueTypes} cx="50%" cy="50%" innerRadius={50} outerRadius={80}
+                    dataKey="count" nameKey="severity" paddingAngle={3}>
+                    {data.issueTypes.map((entry: any, i: number) => (
+                      <Cell key={i} fill={SEVERITY_COLORS[entry.severity] ?? "#7c3aed"} />
+                    ))}
+                  </Pie>
+                  <Tooltip content={<CustomTooltip />} />
+                  <Legend formatter={(v) => <span className="text-[11px] text-slate-300">{v}</span>} />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="mt-3 space-y-1.5">
+                {data.issueTypes.map((t: any) => (
+                  <div key={t.severity} className="flex items-center gap-2 text-xs">
+                    <span className="w-2 h-2 rounded-full flex-shrink-0"
+                      style={{ background: SEVERITY_COLORS[t.severity] ?? "#7c3aed" }} />
+                    <span className="capitalize flex-1 text-slate-300">{t.severity}</span>
+                    <span className="font-mono text-slate-400">{t.count} issues fixed</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="h-[180px] flex items-center justify-center text-slate-500 text-sm">No issues data yet</div>
+          )}
+        </div>
+      </div>
 
-          {/* Feature breakdown table */}
-          <div style={{ background: "rgba(26,0,51,0.6)", border: "1px solid rgba(45,15,78,0.8)", borderRadius: 14, padding: 24 }}>
-            <h3 style={{ fontSize: 14, fontWeight: 700, color: "#fff", marginBottom: 16 }}>Feature Breakdown</h3>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
-                <tr>
-                  {["Feature", "Count", "% of Total", "Status"].map(h => (
-                    <th key={h} style={{ padding: "8px 16px", textAlign: "left", fontSize: 11, fontWeight: 700, color: "#7c6f94", letterSpacing: 1, borderBottom: "1px solid rgba(45,15,78,0.4)" }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {Object.entries(featureLabels).map(([key, label], i) => {
-                  const cnt = byType[key] || 0;
-                  const pct = total > 0 ? ((cnt / total) * 100).toFixed(1) : "0.0";
-                  return (
-                    <tr key={key} style={{ borderBottom: "1px solid rgba(45,15,78,0.2)" }}>
-                      <td style={{ padding: "12px 16px", fontSize: 14, color: "#e2d9f3", fontWeight: 600 }}>
-                        <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: "50%", background: COLORS[i], marginRight: 10 }} />
-                        {label}
-                      </td>
-                      <td style={{ padding: "12px 16px", fontSize: 14, color: COLORS[i], fontWeight: 700 }}>{cnt}</td>
-                      <td style={{ padding: "12px 16px", fontSize: 13, color: "#7c6f94" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <div style={{ flex: 1, height: 4, background: "rgba(45,15,78,0.5)", borderRadius: 2 }}>
-                            <div style={{ width: `${pct}%`, height: "100%", background: COLORS[i], borderRadius: 2 }} />
-                          </div>
-                          {pct}%
-                        </div>
-                      </td>
-                      <td style={{ padding: "12px 16px" }}>
-                        <span style={{ fontSize: 11, padding: "3px 8px", borderRadius: 4, background: cnt > 0 ? "rgba(16,185,129,0.12)" : "rgba(45,15,78,0.3)", color: cnt > 0 ? "#10b981" : "#7c6f94" }}>
-                          {cnt > 0 ? "Active" : "Not used yet"}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+      {/* Top gains */}
+      {data?.topGains?.length > 0 && (
+        <div className="glass-card rounded-2xl p-5">
+          <div className="text-sm font-bold mb-4 flex items-center gap-2">
+            <Award className="w-4 h-4 text-yellow-400" />Top 5 Performance Wins
+          </div>
+          <div className="space-y-2">
+            {data.topGains.map((q: any, i: number) => (
+              <div key={q.id} className="flex items-center gap-3 py-2 border-b border-violet-500/5 last:border-0">
+                <span className="text-sm font-black text-slate-500 w-5 flex-shrink-0">#{i + 1}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-medium truncate text-slate-200">{q.title ?? "SQL Query"}</div>
+                  <div className="text-[10px] text-slate-500">{q.domain} · {new Date(q.createdAt).toLocaleDateString()}</div>
+                </div>
+                <div className="text-sm font-black text-emerald-400 font-mono">+{q.performanceGain}%</div>
+              </div>
+            ))}
           </div>
         </div>
       )}

@@ -1,38 +1,17 @@
-"use client";
-import { useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
-import { Sidebar } from "@/components/Sidebar";
+// app/(dashboard)/layout.tsx
+import { getCurrentUser } from "@/lib/auth";
+import { redirect } from "next/navigation";
+import { Sidebar } from "@/components/layout/Sidebar";
 
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const { data: session, status } = useSession();
-  const router = useRouter();
-
-  useEffect(() => {
-    if (status === "unauthenticated") {
-      router.push("/signin");
-    }
-  }, [status, router]);
-
-  if (status === "loading") {
-    return (
-      <div style={{ display: "flex", height: "100vh", alignItems: "center", justifyContent: "center", background: "#0a0014" }}>
-        <div style={{ textAlign: "center" }}>
-          <div style={{ width: 48, height: 48, border: "3px solid rgba(124,58,237,0.3)", borderTopColor: "#7c3aed", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 16px" }} />
-          <p style={{ color: "#7c6f94", fontSize: 14 }}>Loading Smart Query Optimizer...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!session) return null;
+export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const user = await getCurrentUser();
+  if (!user) redirect("/login");
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: "#0a0014" }}>
-      <Sidebar />
-      <main style={{ flex: 1, marginLeft: 240, minHeight: "100vh", overflow: "auto" }}>
-        {children}
-      </main>
+    <div className="min-h-screen bg-[#030309] flex">
+      <div className="fixed inset-0 bg-cyber-grid opacity-20 pointer-events-none"/>
+      <Sidebar/>
+      <main className="flex-1 min-w-0 relative z-10">{children}</main>
     </div>
   );
 }

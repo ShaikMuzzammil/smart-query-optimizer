@@ -1,39 +1,59 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import prisma from "@/lib/prisma";
+// app/api/conversions/route.ts
+import { NextResponse } from "next/server";
+import { getAuth } from "@/lib/auth";
+import { db } from "@/lib/db";
 
-export async function GET(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+export const dynamic = "force-dynamic";
 
-  const { searchParams } = new URL(req.url);
-  const type = searchParams.get("type");
-  const limit = parseInt(searchParams.get("limit") || "50");
-  const offset = parseInt(searchParams.get("offset") || "0");
-  const search = searchParams.get("search") || "";
+export async function GET(req: Request) {
+  try {
+    const session = await getAuth();
+    if (!session?.user?.id)
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const where: Record<string, unknown> = { userId: session.user.id };
-  if (type && type !== "all") where.type = type;
-  if (search) where.input = { contains: search, mode: "insensitive" };
+    const url = new URL(req.url);
+    const limit  = Math.min(parseInt(url.searchParams.get("limit")  ?? "50"), 200);
+    const feature = url.searchParams.get("feature") ?? undefined;
 
-  const [items, total] = await Promise.all([
-    prisma.conversion.findMany({
-      where, orderBy: { createdAt: "desc" }, take: limit, skip: offset,
-      select: { id: true, type: true, input: true, output: true, dialect: true, domain: true, issueCount: true, severity: true, status: true, modelUsed: true, duration: true, createdAt: true },
-    }),
-    prisma.conversion.count({ where }),
-  ]);
+    const conversions = await db.conversion.findMany({
+      where: {
+        userId: session.user.id,
+        ...(feature ? { feature } : {}),
+      },
+      orderBy: { createdAt: "desc" },
+      take: limit,
+    });
 
-  return NextResponse.json({ items, total, offset, limit });
+    return NextResponse.json({ conversions });
+  } catch (err) {
+    console.error("[CONVERSIONS]", err);
+    return NextResponse.json({ error: "Failed to load conversions" }, { status: 500 });
+  }
 }
 
-export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const body = await req.json();
-  const item = await prisma.conversion.create({
-    data: { ...body, userId: session.user.id },
-  });
-  return NextResponse.json(item);
+export async function POST(req: Request) {
+  try {
+    const session = await getAuth();
+    if (!session?.user?.id)
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const body = await req.json();
+    const conversion = await db.conversion.create({
+      data: {
+        userId:    session.user.id,
+        feature:   body.feature ?? "other",
+        inputText: body.inputText,
+        outputText:body.outputText,
+        dialect:   body.dialect,
+        domain:    body.domain,
+        success:   body.success ?? true,
+        metadata:  body.metadata ?? {},
+      },
+    });
+
+    return NextResponse.json(conversion);
+  } catch (err) {
+    console.error("[CONVERSIONS POST]", err);
+    return NextResponse.json({ error: "Failed to save conversion" }, { status: 500 });
+  }
 }

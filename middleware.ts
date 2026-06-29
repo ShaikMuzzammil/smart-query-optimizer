@@ -1,19 +1,11 @@
+// middleware.ts — Protect all authenticated routes
 import { withAuth } from "next-auth/middleware";
-import { NextResponse } from "next/server";
 
-export default withAuth(
-  function middleware(req) {
-    return NextResponse.next();
+export default withAuth({
+  pages: {
+    signIn: "/login",
   },
-  {
-    callbacks: {
-      authorized: ({ token }) => !!token,
-    },
-    pages: {
-      signIn: "/signin",
-    },
-  }
-);
+});
 
 export const config = {
   matcher: [
@@ -26,9 +18,10 @@ export const config = {
     "/history/:path*",
     "/analytics/:path*",
     "/settings/:path*",
-    "/api/optimize/:path*",
-    "/api/nl2sql/:path*",
-    "/api/conversions/:path*",
+    "/api/optimize",
+    "/api/nl2sql",
+    "/api/queries/:path*",
+    "/api/analytics/:path*",
     "/api/export/:path*",
   ],
 };
