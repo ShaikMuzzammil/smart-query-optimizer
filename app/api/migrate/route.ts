@@ -1,21 +1,18 @@
-// app/api/migrate/route.ts — Run prisma db push once after deploy
-import { NextResponse } from "next/server";
-import { exec } from "child_process";
-import { promisify } from "util";
+import { NextRequest, NextResponse } from "next/server";
+import prisma from "@/lib/prisma";
+import { execSync } from "child_process";
 
-export const dynamic = "force-dynamic";
-const execAsync = promisify(exec);
-
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   const auth = req.headers.get("authorization");
-  const secret = process.env.NEXTAUTH_SECRET;
-  if (!secret || auth !== `Bearer ${secret}`)
+  const token = auth?.replace("Bearer ", "");
+  if (token !== process.env.NEXTAUTH_SECRET) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
+  }
   try {
-    const { stdout, stderr } = await execAsync("npx prisma db push --accept-data-loss --skip-generate");
-    return NextResponse.json({ ok: true, stdout: stdout.slice(0, 2000), stderr: stderr.slice(0, 500) });
-  } catch (err: any) {
-    return NextResponse.json({ ok: false, error: err.message.slice(0, 1000) }, { status: 500 });
+    execSync("npx prisma db push --accept-data-loss", { stdio: "pipe" });
+    await prisma.$queryRaw`SELECT 1`;
+    return NextResponse.json({ ok: true, message: "Schema pushed successfully" });
+  } catch (err) {
+    return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 }

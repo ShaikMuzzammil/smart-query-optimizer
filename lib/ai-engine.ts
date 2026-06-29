@@ -1,282 +1,306 @@
-// lib/ai-engine.ts — Gemini-only AI engine with 3-model fallback chain
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-const gemini = process.env.GEMINI_API_KEY
-  ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
-  : null;
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  Smart Query Intelligence Engine — v7
+//  5-model fallback chain, Gemini-only
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-// Ordered fallback: flash → flash-8b → pro
-const GEMINI_MODELS = [
+const FALLBACK_MODELS = [
+  "gemini-1.5-pro",
   "gemini-1.5-flash",
   "gemini-1.5-flash-8b",
   "gemini-pro",
+  "gemini-1.0-pro",
 ];
 
-// ── System prompt ─────────────────────────────────────────────────────────────
-export function buildOptimizeSystem(dialect = "PostgreSQL", schemaContext?: string) {
-  const schemaSection = schemaContext
-    ? `\n\nSCHEMA CONTEXT (use these exact table/column names):\n${schemaContext}`
-    : "";
-  return `You are a world-class SQL query optimizer and database performance expert specializing in ${dialect}.${schemaSection}
+async function callGemini(prompt: string, maxTokens = 2048): Promise<{ text: string; model: string }> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error("GEMINI_API_KEY not configured");
 
-CRITICAL: Return ONLY valid JSON — no markdown fences, no preamble, no text outside the JSON object.
+  const genAI = new GoogleGenerativeAI(apiKey);
+  let lastError: Error | null = null;
 
-Return this EXACT structure:
-{
-  "isValidSql": true,
-  "optimizedQuery": "fully optimized ${dialect} SQL with inline comments",
-  "issues": [{"type":"slug","severity":"critical|high|medium|low","description":"problem + impact"}],
-  "improvements": ["improvement 1", "improvement 2"],
-  "performanceGain": 75,
-  "explanation": "2-3 sentences on key changes",
-  "indexRecommendations": ["CREATE INDEX idx ON tbl(col);"],
-  "complexityBefore": "O(n²)",
-  "complexityAfter": "O(n log n)",
-  "estimatedSpeedup": "3-5× faster",
-  "tablesDetected": ["table1","table2"],
-  "queryType": "SELECT",
-  "dialect": "${dialect}",
-  "domain": "E-Commerce|Healthcare|Finance|HR|Analytics|Social|Real Estate|Logistics|Education|Gaming|Banking|Marketing|Travel|General",
-  "title": "Short descriptive title",
-  "estimatedRowsScanned": "~2.1M rows → ~4.8K rows",
-  "costScore": 35,
-  "readabilityNotes": "one line on code quality/maintainability",
-  "piiDetected": false,
-  "piiFields": [],
-  "securityAlerts": [],
-  "lintWarnings": []
-}
-
-Rules:
-- performanceGain: integer 1-99
-- costScore: 1-100 (lower = cheaper to execute)
-- securityAlerts: array of strings for SQL injection risks, unbounded selects, etc.
-- lintWarnings: array of strings for style/quality issues
-- If NOT SQL: isValidSql=false, optimizedQuery="", empty arrays, performanceGain=0
-- If SQL with syntax errors: isValidSql=true, corrected SQL in optimizedQuery
-- piiDetected: true if string literals look like real PII (emails, SSNs, card numbers)
-- Always use ${dialect}-specific syntax and functions
-- Never include text outside the single JSON object`;
-}
-
-// ── PII redaction ─────────────────────────────────────────────────────────────
-const PII_PATTERNS = [
-  { rx: /(['"])[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\1/g,           label: "[REDACTED_EMAIL]" },
-  { rx: /(['"])\d{3}-\d{2}-\d{4}\1/g,                                           label: "[REDACTED_SSN]" },
-  { rx: /(['"])(?:\d[\s-]?){13,16}\1/g,                                          label: "[REDACTED_CARD]" },
-  { rx: /(['"])(?:\+?1[\s-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}\1/g,         label: "[REDACTED_PHONE]" },
-  { rx: /(['"])\d{1,5}\s[\w\s]{1,100},\s[A-Z]{2}\s\d{5}(-\d{4})?\1/g,         label: "[REDACTED_ADDRESS]" },
-];
-
-export interface RedactResult { redacted: string; found: string[]; }
-
-export function redactPii(sql: string): RedactResult {
-  let out = sql;
-  const found: string[] = [];
-  for (const { rx, label } of PII_PATTERNS) {
-    const matches = out.match(new RegExp(rx.source, rx.flags));
-    if (matches?.length) {
-      found.push(label.replace(/\[REDACTED_|]/g, "").toLowerCase());
-      out = out.replace(new RegExp(rx.source, rx.flags), label);
+  for (const modelName of FALLBACK_MODELS) {
+    try {
+      const model = genAI.getGenerativeModel({
+        model: modelName,
+        generationConfig: {
+          maxOutputTokens: maxTokens,
+          temperature: 0.2,
+          topP: 0.8,
+        },
+      });
+      const result = await model.generateContent(prompt);
+      const text = result.response.text();
+      if (!text || text.trim().length < 10) throw new Error("Empty response");
+      return { text, model: modelName };
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      // Rate limited or quota — try next model
+      if (lastError.message.includes("quota") || lastError.message.includes("429")) continue;
+      if (lastError.message.includes("not found") || lastError.message.includes("404")) continue;
+      if (lastError.message.includes("unavailable") || lastError.message.includes("503")) continue;
+      // For genuine errors, still try next model
+      continue;
     }
   }
-  return { redacted: out, found };
+  throw lastError || new Error("All AI models exhausted");
 }
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  PII Redaction
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+export function redactPII(sql: string): { redacted: string; count: number } {
+  let redacted = sql;
+  let count = 0;
+
+  const patterns: [RegExp, string][] = [
+    [/\b[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}\b/gi, "[EMAIL_REDACTED]"],
+    [/\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b/g, "[PHONE_REDACTED]"],
+    [/\b\d{3}-\d{2}-\d{4}\b/g, "[SSN_REDACTED]"],
+    [/\b(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|3[47][0-9]{13})\b/g, "[CARD_REDACTED]"],
+    [/\b[A-Z]{2}\d{6}[A-Z]?\b/g, "[PASSPORT_REDACTED]"],
+  ];
+
+  for (const [pattern, replacement] of patterns) {
+    const before = redacted;
+    redacted = redacted.replace(pattern, replacement);
+    if (redacted !== before) count++;
+  }
+
+  return { redacted, count };
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  Static SQL Analysis (works without AI)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+export interface Issue {
+  label: string;
+  desc: string;
+  severity: "critical" | "high" | "medium" | "low";
+  fix?: string;
+}
+
+export function analyzeSQLStatic(sql: string): Issue[] {
+  const issues: Issue[] = [];
+  const upper = sql.toUpperCase();
+
+  if (/SELECT\s+\*/i.test(sql))
+    issues.push({ label: "SELECT * Usage", desc: "Fetches all columns — prevents index-only scans and wastes bandwidth.", severity: "medium", fix: "List only the columns you need: SELECT id, name, email FROM ..." });
+
+  if (/YEAR\s*\(|MONTH\s*\(|DAY\s*\(|DATE\s*\(/i.test(sql))
+    issues.push({ label: "Function on Indexed Column", desc: "Wrapping a column in a function prevents the query engine from using an index on that column.", severity: "high", fix: "Use range predicates: WHERE created_at >= '2024-01-01' AND created_at < '2025-01-01'" });
+
+  if (/SELECT[\s\S]*?FROM\s+\w+[\s\S]*?WHERE[\s\S]*?SELECT/i.test(sql))
+    issues.push({ label: "Correlated Subquery (N+1)", desc: "Runs once per outer row. Replace with a JOIN + GROUP BY for O(n) instead of O(n\u00b2) execution.", severity: "critical", fix: "Rewrite as LEFT JOIN with aggregation in a subquery or CTE" });
+
+  if (!/LIMIT|TOP|ROWNUM|FETCH\s+FIRST/i.test(sql) && /SELECT/i.test(sql))
+    issues.push({ label: "Missing LIMIT Clause", desc: "Without a result-set bound, a single query can return millions of rows and saturate memory.", severity: "medium", fix: "Add LIMIT 100 or appropriate page size" });
+
+  if (!/WHERE/i.test(sql) && /SELECT/i.test(sql) && !/COUNT\(\)/i.test(sql))
+    issues.push({ label: "Missing WHERE Clause", desc: "Full table scan — no filter means every row is examined regardless of table size.", severity: "high", fix: "Add a WHERE clause to filter rows before aggregation" });
+
+  if (/OR\s+\d+\s*=\s*\d+|OR\s+'[^']*'\s*=\s*'[^']*'|1\s*=\s*1|'1'\s*=\s*'1'/i.test(sql))
+    issues.push({ label: "SQL Injection Pattern", desc: "Tautological condition detected — potential SQL injection vulnerability.", severity: "critical", fix: "Use parameterized queries / prepared statements" });
+
+  if (/LIKE\s+'%[^%]/i.test(sql))
+    issues.push({ label: "Leading Wildcard LIKE", desc: "A leading % forces a full index scan — cannot use B-tree index prefix.", severity: "high", fix: "Use full-text search or a suffix index for leading wildcard patterns" });
+
+  if (/NOT\s+IN\s*\(/i.test(sql))
+    issues.push({ label: "NOT IN with Subquery", desc: "NOT IN returns no rows if the subquery contains any NULL values. Use NOT EXISTS instead.", severity: "high", fix: "Replace NOT IN (...) with NOT EXISTS (SELECT 1 FROM ... WHERE ...)" });
+
+  if ((sql.match(/JOIN/gi) || []).length > 4)
+    issues.push({ label: "Excessive JOINs", desc: "More than 4 JOINs increases the optimizer search space exponentially.", severity: "medium", fix: "Consider CTEs, materialized views, or denormalization for hot paths" });
+
+  if (/ORDER\s+BY[\s\S]*?RAND\(\)|NEWID\(\)|RANDOM\(\)/i.test(sql))
+    issues.push({ label: "ORDER BY RANDOM()", desc: "Sorts the entire result set randomly — O(n log n) per query, never uses indexes.", severity: "high", fix: "Use offset-based or keyset pagination for random sampling" });
+
+  return issues;
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  SQL Optimize
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 export interface OptimizeResult {
-  isValidSql: boolean;
-  optimizedQuery: string;
-  issues: Array<{ type: string; severity: string; description: string }>;
-  improvements: string[];
-  performanceGain: number;
+  optimizedSQL: string;
   explanation: string;
-  indexRecommendations: string[];
-  complexityBefore: string;
-  complexityAfter: string;
-  estimatedSpeedup: string;
-  tablesDetected: string[];
-  queryType: string;
-  dialect: string;
-  domain: string;
-  title: string;
-  estimatedRowsScanned: string;
-  costScore: number;
-  readabilityNotes: string;
-  piiDetected: boolean;
-  piiFields: string[];
-  securityAlerts: string[];
-  lintWarnings: string[];
-  engine: "ai";
+  changes: string[];
+  indexSuggestions: string[];
+  performanceGain: string;
+  issues: Issue[];
+  staticIssues: Issue[];
+  modelUsed: string;
+  piiRedacted: number;
 }
 
+export async function optimizeSQL(sql: string, dialect: string = "PostgreSQL"): Promise<OptimizeResult> {
+  const { redacted, count: piiCount } = redactPII(sql);
+  const staticIssues = analyzeSQLStatic(sql);
+
+  const prompt = `You are a senior database performance engineer and SQL expert. Analyze and optimize this ${dialect} query.
+
+SQL QUERY:
+\`\`\`sql
+${redacted}
+\`\`\`
+
+DIALECT: ${dialect}
+
+Provide a thorough optimization. Return ONLY valid JSON with this exact structure (no markdown, no backticks):
+{
+  "optimizedSQL": "the fully optimized SQL query with comments explaining each change",
+  "explanation": "2-3 sentence summary of the main performance issue and the fix",
+  "changes": ["change 1", "change 2", "change 3"],
+  "indexSuggestions": ["CREATE INDEX idx_name ON table(col);", "CREATE INDEX ..."],
+  "performanceGain": "e.g. 10-50x faster on large datasets"
+}
+
+Focus on:
+- Eliminating N+1 correlated subqueries (replace with JOINs + GROUP BY)
+- Removing function calls on indexed columns
+- Adding appropriate LIMIT clauses
+- Fixing NULL-unsafe comparisons (NOT IN → NOT EXISTS)
+- Using CTEs for complex transformations
+- ${dialect}-specific optimizations (window functions, EXPLAIN hints, etc.)`;
+
+  try {
+    const { text, model } = await callGemini(prompt, 2048);
+    const clean = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+    const parsed = JSON.parse(clean);
+    return {
+      optimizedSQL: parsed.optimizedSQL || redacted,
+      explanation: parsed.explanation || "Query has been optimized.",
+      changes: parsed.changes || [],
+      indexSuggestions: parsed.indexSuggestions || [],
+      performanceGain: parsed.performanceGain || "Significant improvement expected",
+      issues: staticIssues,
+      staticIssues,
+      modelUsed: model,
+      piiRedacted: piiCount,
+    };
+  } catch (err) {
+    // Static-only fallback — still useful
+    return {
+      optimizedSQL: redacted,
+      explanation: "AI optimization unavailable. Static analysis completed — review issues below.",
+      changes: staticIssues.map((i) => i.label),
+      indexSuggestions: [],
+      performanceGain: "Apply fixes above for estimated 2-10x improvement",
+      issues: staticIssues,
+      staticIssues,
+      modelUsed: "static-analysis",
+      piiRedacted: piiCount,
+    };
+  }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  Natural Language to SQL
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 export interface NL2SQLResult {
   sql: string;
   explanation: string;
-  assumptions: string[];
-  tablesNeeded: string[];
-  dialect: string;
+  tables: string[];
+  complexity: "simple" | "moderate" | "complex";
+  modelUsed: string;
 }
 
-export class AiParseError extends Error {}
-export class AiUnavailableError extends Error {}
+export async function convertNL2SQL(
+  prompt: string,
+  dialect: string = "PostgreSQL",
+  schemaContext?: string
+): Promise<NL2SQLResult> {
+  const schemaSection = schemaContext
+    ? `\nDATABASE SCHEMA (use ONLY these exact table/column names):\n\`\`\`sql\n${schemaContext}\n\`\`\``
+    : "\nNo schema provided — use generic table names appropriate for the domain.";
 
-// ── JSON extraction ──────────────────────────────────────────────────────────
-function extractJson(text: string): string | null {
-  const start = text.indexOf("{");
-  if (start === -1) return null;
-  let depth = 0;
-  for (let i = start; i < text.length; i++) {
-    if (text[i] === "{") depth++;
-    else if (text[i] === "}") { depth--; if (depth === 0) return text.slice(start, i + 1); }
-  }
-  return null;
+  const systemPrompt = `You are an expert SQL developer. Convert the natural language request to a production-ready ${dialect} SQL query.
+${schemaSection}
+
+USER REQUEST: ${prompt}
+
+DIALECT: ${dialect}
+
+Return ONLY valid JSON (no markdown, no backticks):
+{
+  "sql": "the complete, ready-to-run SQL query with inline comments",
+  "explanation": "plain-English explanation of what the query does and why it's structured this way",
+  "tables": ["table1", "table2"],
+  "complexity": "simple|moderate|complex"
 }
 
-function parseResult(raw: string): OptimizeResult {
-  const cleaned = raw.replace(/```json|```/g, "").trim();
-  let parsed: unknown;
-  try { parsed = JSON.parse(cleaned); }
-  catch {
-    const extracted = extractJson(cleaned);
-    if (!extracted) throw new AiParseError("AI returned unreadable response");
-    try { parsed = JSON.parse(extracted); }
-    catch { throw new AiParseError("AI returned malformed JSON"); }
-  }
-  const p = parsed as Partial<OptimizeResult>;
+Requirements:
+- Use exact table and column names from the schema if provided
+- Include appropriate JOINs, GROUP BY, HAVING, ORDER BY, LIMIT
+- Add SQL comments for non-obvious logic
+- Use ${dialect}-specific syntax (window functions, CTEs, etc. where appropriate)
+- Never hallucinate table or column names if schema is provided`;
+
+  const { text, model } = await callGemini(systemPrompt, 2048);
+  const clean = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+  const parsed = JSON.parse(clean);
+
   return {
-    isValidSql:          p.isValidSql ?? true,
-    optimizedQuery:      p.optimizedQuery ?? "",
-    issues:              Array.isArray(p.issues) ? p.issues : [],
-    improvements:        Array.isArray(p.improvements) ? p.improvements : [],
-    performanceGain:     typeof p.performanceGain === "number" ? p.performanceGain : 0,
-    explanation:         p.explanation ?? "",
-    indexRecommendations: Array.isArray(p.indexRecommendations) ? p.indexRecommendations : [],
-    complexityBefore:    p.complexityBefore ?? "N/A",
-    complexityAfter:     p.complexityAfter ?? "N/A",
-    estimatedSpeedup:    p.estimatedSpeedup ?? "N/A",
-    tablesDetected:      Array.isArray(p.tablesDetected) ? p.tablesDetected : [],
-    queryType:           p.queryType ?? "UNKNOWN",
-    dialect:             p.dialect ?? "PostgreSQL",
-    domain:              p.domain ?? "General",
-    title:               p.title ?? "SQL Query",
-    estimatedRowsScanned: p.estimatedRowsScanned ?? "N/A",
-    costScore:           typeof p.costScore === "number" ? p.costScore : 0,
-    readabilityNotes:    p.readabilityNotes ?? "",
-    piiDetected:         p.piiDetected ?? false,
-    piiFields:           Array.isArray(p.piiFields) ? p.piiFields : [],
-    securityAlerts:      Array.isArray(p.securityAlerts) ? p.securityAlerts : [],
-    lintWarnings:        Array.isArray(p.lintWarnings) ? p.lintWarnings : [],
-    engine:              "ai",
+    sql: parsed.sql || "-- Could not generate SQL",
+    explanation: parsed.explanation || "",
+    tables: parsed.tables || [],
+    complexity: parsed.complexity || "moderate",
+    modelUsed: model,
   };
 }
 
-// ── Gemini call with model fallback ─────────────────────────────────────────
-async function callGemini(prompt: string, system: string, modelIdx = 0): Promise<string> {
-  if (!gemini) throw new AiUnavailableError("AI engine not configured. Please add GEMINI_API_KEY to your environment.");
-  if (modelIdx >= GEMINI_MODELS.length) throw new AiUnavailableError("All AI engine models exhausted.");
-
-  const modelName = GEMINI_MODELS[modelIdx];
-  try {
-    const model = gemini.getGenerativeModel({
-      model: modelName,
-      systemInstruction: system + "\n\nIMPORTANT: Respond ONLY with a raw JSON object. No markdown, no prose.",
-      generationConfig: { responseMimeType: "application/json" },
-    });
-    const result = await model.generateContent(prompt);
-    return result.response.text();
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    const isModelErr = msg.includes("404") || msg.includes("not found") || msg.includes("deprecated") || msg.includes("INVALID_ARGUMENT");
-    if (isModelErr && modelIdx + 1 < GEMINI_MODELS.length) {
-      console.warn(`[AI-ENGINE] ${modelName} failed (${msg.slice(0, 60)}), trying ${GEMINI_MODELS[modelIdx + 1]}`);
-      return callGemini(prompt, system, modelIdx + 1);
-    }
-    throw err;
-  }
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  Schema Analysis
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+export interface SchemaAnalysisResult {
+  tableCount: number;
+  columnCount: number;
+  relationshipCount: number;
+  suggestions: string[];
+  normalForm: string;
+  modelUsed: string;
 }
 
-// ── Main optimize function ───────────────────────────────────────────────────
-export async function optimizeSQL(
-  query: string,
-  dialect = "PostgreSQL",
-  schemaContext?: string
-): Promise<OptimizeResult> {
-  const { redacted, found } = redactPii(query);
-  const prompt = `Analyze this ${dialect} SQL query and return the JSON optimization result:\n\n${redacted}`;
-  const system = buildOptimizeSystem(dialect, schemaContext);
+export async function analyzeSchema(ddl: string): Promise<SchemaAnalysisResult> {
+  const prompt = `Analyze this database schema DDL and provide optimization insights.
 
-  if (!gemini) throw new AiUnavailableError("AI engine not configured.");
+DDL:
+\`\`\`sql
+${ddl}
+\`\`\`
 
-  try {
-    const raw = await callGemini(prompt, system);
-    const result = parseResult(raw);
-    if (found.length > 0) {
-      result.piiDetected = true;
-      result.piiFields = [...new Set([...result.piiFields, ...found])];
-    }
-    return result;
-  } catch (err) {
-    if (err instanceof AiParseError) throw err;
-    if (err instanceof AiUnavailableError) throw err;
-    const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes("429") || msg.includes("quota") || msg.includes("rate")) {
-      throw new AiUnavailableError("Rate limit reached — please try again in a moment.");
-    }
-    throw new AiUnavailableError("Optimization service temporarily unavailable.");
-  }
-}
-
-// ── NL2SQL ──────────────────────────────────────────────────────────────────
-const NL2SQL_SYSTEM = (dialect: string, schemaContext?: string) => {
-  const schemaSection = schemaContext
-    ? `\n\nSCHEMA CONTEXT (use these exact table/column names in your SQL):\n${schemaContext}`
-    : "";
-  return `You are an expert ${dialect} developer. Convert natural language queries to optimized ${dialect} SQL.${schemaSection}
-Return ONLY valid JSON, no markdown:
+Return ONLY valid JSON:
 {
-  "sql": "the complete, production-ready ${dialect} SQL query",
-  "explanation": "what this query does in plain English",
-  "assumptions": ["assumption about schema/data if any"],
-  "tablesNeeded": ["table1", "table2"],
-  "dialect": "${dialect}"
-}
-Rules: Use realistic, well-named tables. Write production-quality SQL with proper JOINs, WHERE clauses, aliases.`;
-};
+  "suggestions": ["suggestion 1", "suggestion 2"],
+  "normalForm": "e.g. 3NF with minor violations",
+  "indexRecommendations": ["CREATE INDEX ..."],
+  "securityConcerns": ["concern 1"]
+}`;
 
-export async function nl2sql(
-  prompt: string,
-  dialect = "PostgreSQL",
-  schemaContext?: string
-): Promise<NL2SQLResult> {
-  const userPrompt = `Convert this natural language request to ${dialect} SQL:\n"${prompt}"`;
-  const system = NL2SQL_SYSTEM(dialect, schemaContext);
-
-  if (!gemini) throw new AiUnavailableError("AI engine not configured.");
+  const tableMatches = ddl.match(/CREATE\s+TABLE\s+\w+/gi) || [];
+  const colMatches = ddl.match(/^\s+\w+\s+\w+/gm) || [];
+  const fkMatches = ddl.match(/REFERENCES\s+\w+/gi) || [];
 
   try {
-    const raw = await callGemini(userPrompt, system);
-    const cleaned = raw.replace(/```json|```/g, "").trim();
-    let parsed: unknown;
-    try { parsed = JSON.parse(cleaned); }
-    catch {
-      const ex = extractJson(cleaned);
-      if (!ex) throw new AiParseError("bad JSON");
-      parsed = JSON.parse(ex);
-    }
-    const p = parsed as Partial<NL2SQLResult>;
+    const { text, model } = await callGemini(prompt, 1024);
+    const clean = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+    const parsed = JSON.parse(clean);
     return {
-      sql: p.sql ?? "",
-      explanation: p.explanation ?? "",
-      assumptions: Array.isArray(p.assumptions) ? p.assumptions : [],
-      tablesNeeded: Array.isArray(p.tablesNeeded) ? p.tablesNeeded : [],
-      dialect: p.dialect ?? dialect
+      tableCount: tableMatches.length,
+      columnCount: colMatches.length,
+      relationshipCount: fkMatches.length,
+      suggestions: parsed.suggestions || [],
+      normalForm: parsed.normalForm || "Unknown",
+      modelUsed: model,
     };
-  } catch (err) {
-    if (err instanceof AiParseError) throw err;
-    throw new AiUnavailableError("Conversion service temporarily unavailable.");
+  } catch {
+    return {
+      tableCount: tableMatches.length,
+      columnCount: colMatches.length,
+      relationshipCount: fkMatches.length,
+      suggestions: ["Add indexes on foreign key columns", "Consider adding updated_at timestamps", "Review NOT NULL constraints"],
+      normalForm: "Analysis unavailable",
+      modelUsed: "static",
+    };
   }
 }
-
-// Re-export for legacy imports
-export const OPTIMIZE_SYSTEM = buildOptimizeSystem();

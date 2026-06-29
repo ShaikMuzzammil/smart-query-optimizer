@@ -1,79 +1,38 @@
-// app/api/nl2sql/route.ts
-import { NextResponse } from "next/server";
-import { getAuth } from "@/lib/auth";
-import { nl2sql, AiUnavailableError, AiParseError } from "@/lib/ai-engine";
-import { db } from "@/lib/db";
-import { z } from "zod";
+import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { convertNL2SQL } from "@/lib/ai-engine";
+import prisma from "@/lib/prisma";
 
-export const dynamic = "force-dynamic";
+export async function POST(req: NextRequest) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-const schema = z.object({
-  prompt:        z.string().min(5).max(2000),
-  dialect:       z.string().optional().default("PostgreSQL"),
-  schemaContext: z.string().optional(),
-});
-
-export async function POST(req: Request) {
   try {
-    const session = await getAuth();
-    if (!session?.user?.id)
-      return NextResponse.json({ error: "Please sign in to convert queries." }, { status: 401 });
+    const { prompt, dialect = "PostgreSQL", schemaContext, domain } = await req.json();
+    if (!prompt?.trim()) return NextResponse.json({ error: "Prompt required" }, { status: 400 });
 
-    const body = await req.json();
-    const parsed = schema.safeParse(body);
-    if (!parsed.success)
-      return NextResponse.json({ error: "Please describe what SQL you need (at least 5 characters)." }, { status: 400 });
+    const start = Date.now();
+    const result = await convertNL2SQL(prompt, dialect, schemaContext);
+    const duration = Date.now() - start;
 
-    const { prompt, dialect, schemaContext } = parsed.data;
-
-    let result;
-    try {
-      result = await nl2sql(prompt, dialect, schemaContext);
-    } catch (err) {
-      // Track failed conversion
-      try {
-        await db.conversion.create({
-          data: {
-            userId: session.user.id,
-            feature: "nl2sql",
-            inputText: prompt,
-            dialect,
-            success: false,
-            metadata: { error: err instanceof Error ? err.message.slice(0, 200) : "unknown" },
-          },
-        });
-      } catch {}
-
-      if (err instanceof AiUnavailableError)
-        return NextResponse.json({ error: "Conversion service is temporarily unavailable. Please try again in a moment." }, { status: 503 });
-      if (err instanceof AiParseError)
-        return NextResponse.json({ error: "Conversion returned an unexpected format — try again." }, { status: 502 });
-
-      console.error("[NL2SQL]", err);
-      return NextResponse.json({ error: "Conversion failed — please try again." }, { status: 500 });
-    }
-
-    // Track successful conversion
-    try {
-      await db.conversion.create({
-        data: {
-          userId: session.user.id,
-          feature: "nl2sql",
-          inputText: prompt,
-          outputText: result.sql,
-          dialect,
-          success: true,
-          metadata: {
-            tablesNeeded: result.tablesNeeded,
-            assumptionCount: result.assumptions.length,
-          },
-        },
-      });
-    } catch {}
+    await prisma.conversion.create({
+      data: {
+        userId: session.user.id,
+        type: "nl2sql",
+        input: prompt.slice(0, 2000),
+        output: result.sql.slice(0, 5000),
+        dialect,
+        domain: domain || null,
+        status: "success",
+        modelUsed: result.modelUsed,
+        duration,
+        metadata: JSON.stringify({ complexity: result.complexity, tables: result.tables }),
+      },
+    });
 
     return NextResponse.json(result);
   } catch (err) {
-    console.error("[NL2SQL]", err);
-    return NextResponse.json({ error: "Unexpected error — please try again." }, { status: 500 });
+    return NextResponse.json({ error: err instanceof Error ? err.message : "Conversion failed" }, { status: 500 });
   }
 }

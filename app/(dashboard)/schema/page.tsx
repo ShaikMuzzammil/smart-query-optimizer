@@ -1,574 +1,478 @@
 "use client";
-import { useState, useCallback } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Database, Upload, Edit3, Check, X, Copy, ExternalLink, ChevronDown, ChevronRight, Table, Link2, Key } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 
-const EXAMPLE_SCHEMAS = [
-  {
-    name: "E-Commerce",
-    emoji: "🛒",
-    ddl: `CREATE TABLE users (
-  id SERIAL PRIMARY KEY,
-  email VARCHAR(255) UNIQUE NOT NULL,
-  name VARCHAR(100) NOT NULL,
-  created_at TIMESTAMP DEFAULT NOW()
+const MAX_DDL = 50000;
+
+const EXAMPLE_SCHEMAS: Record<string, { label: string; ddl: string }> = {
+  ecommerce: {
+    label: "E-Commerce",
+    ddl: `-- E-Commerce Schema
+CREATE TABLE users (
+  id         SERIAL PRIMARY KEY,
+  email      VARCHAR(255) UNIQUE NOT NULL,
+  name       VARCHAR(255) NOT NULL,
+  phone      VARCHAR(20),
+  country    VARCHAR(100),
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
 );
 
 CREATE TABLE categories (
-  id SERIAL PRIMARY KEY,
-  name VARCHAR(100) NOT NULL,
-  parent_id INTEGER REFERENCES categories(id)
+  id        SERIAL PRIMARY KEY,
+  name      VARCHAR(100) NOT NULL,
+  parent_id INTEGER REFERENCES categories(id),
+  slug      VARCHAR(100) UNIQUE NOT NULL
 );
 
 CREATE TABLE products (
-  id SERIAL PRIMARY KEY,
-  name VARCHAR(255) NOT NULL,
-  price DECIMAL(10,2) NOT NULL,
+  id          SERIAL PRIMARY KEY,
+  name        VARCHAR(255) NOT NULL,
+  description TEXT,
+  price       DECIMAL(10,2) NOT NULL,
+  stock_qty   INTEGER DEFAULT 0,
   category_id INTEGER REFERENCES categories(id),
-  stock_qty INTEGER DEFAULT 0,
-  created_at TIMESTAMP DEFAULT NOW()
+  created_at  TIMESTAMP DEFAULT NOW()
 );
 
 CREATE TABLE orders (
-  id SERIAL PRIMARY KEY,
-  user_id INTEGER REFERENCES users(id) NOT NULL,
-  status VARCHAR(20) DEFAULT 'pending',
-  total DECIMAL(10,2),
-  created_at TIMESTAMP DEFAULT NOW()
+  id          SERIAL PRIMARY KEY,
+  user_id     INTEGER REFERENCES users(id) NOT NULL,
+  status      VARCHAR(50) DEFAULT 'pending',
+  total       DECIMAL(10,2),
+  discount    DECIMAL(10,2) DEFAULT 0,
+  created_at  TIMESTAMP DEFAULT NOW()
 );
 
 CREATE TABLE order_items (
-  id SERIAL PRIMARY KEY,
-  order_id INTEGER REFERENCES orders(id) NOT NULL,
+  id         SERIAL PRIMARY KEY,
+  order_id   INTEGER REFERENCES orders(id) NOT NULL,
   product_id INTEGER REFERENCES products(id) NOT NULL,
-  qty INTEGER NOT NULL,
-  price DECIMAL(10,2) NOT NULL
+  qty        INTEGER NOT NULL,
+  price      DECIMAL(10,2) NOT NULL
+);
+
+CREATE TABLE reviews (
+  id         SERIAL PRIMARY KEY,
+  user_id    INTEGER REFERENCES users(id) NOT NULL,
+  product_id INTEGER REFERENCES products(id) NOT NULL,
+  rating     SMALLINT CHECK (rating BETWEEN 1 AND 5),
+  body       TEXT,
+  created_at TIMESTAMP DEFAULT NOW()
 );`,
   },
-  {
-    name: "Healthcare",
-    emoji: "🏥",
-    ddl: `CREATE TABLE patients (
-  id SERIAL PRIMARY KEY,
-  name VARCHAR(100) NOT NULL,
-  dob DATE NOT NULL,
-  email VARCHAR(255),
+  hr: {
+    label: "HR & Payroll",
+    ddl: `-- HR & Payroll Schema
+CREATE TABLE departments (
+  id         SERIAL PRIMARY KEY,
+  name       VARCHAR(100) NOT NULL,
+  budget     DECIMAL(12,2),
+  manager_id INTEGER,
   created_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE TABLE doctors (
-  id SERIAL PRIMARY KEY,
-  name VARCHAR(100) NOT NULL,
-  specialty VARCHAR(100),
-  license_no VARCHAR(50) UNIQUE
-);
-
-CREATE TABLE appointments (
-  id SERIAL PRIMARY KEY,
-  patient_id INTEGER REFERENCES patients(id) NOT NULL,
-  doctor_id INTEGER REFERENCES doctors(id) NOT NULL,
-  scheduled_at TIMESTAMP NOT NULL,
-  status VARCHAR(20) DEFAULT 'scheduled'
-);
-
-CREATE TABLE lab_tests (
-  id SERIAL PRIMARY KEY,
-  patient_id INTEGER REFERENCES patients(id) NOT NULL,
-  test_type VARCHAR(100) NOT NULL,
-  result VARCHAR(20),
-  flagged BOOLEAN DEFAULT FALSE,
-  tested_at TIMESTAMP DEFAULT NOW()
-);`,
-  },
-  {
-    name: "HR System",
-    emoji: "👥",
-    ddl: `CREATE TABLE departments (
-  id SERIAL PRIMARY KEY,
-  name VARCHAR(100) NOT NULL,
-  budget DECIMAL(15,2)
-);
-
 CREATE TABLE employees (
-  id SERIAL PRIMARY KEY,
-  name VARCHAR(100) NOT NULL,
-  email VARCHAR(255) UNIQUE NOT NULL,
+  id            SERIAL PRIMARY KEY,
+  name          VARCHAR(255) NOT NULL,
+  email         VARCHAR(255) UNIQUE NOT NULL,
   department_id INTEGER REFERENCES departments(id),
-  salary DECIMAL(10,2),
-  hire_date DATE NOT NULL,
-  manager_id INTEGER REFERENCES employees(id)
+  salary        DECIMAL(10,2) NOT NULL,
+  hire_date     DATE NOT NULL,
+  role          VARCHAR(100),
+  is_active     BOOLEAN DEFAULT TRUE,
+  manager_id    INTEGER REFERENCES employees(id)
+);
+
+CREATE TABLE payroll (
+  id          SERIAL PRIMARY KEY,
+  employee_id INTEGER REFERENCES employees(id) NOT NULL,
+  period      DATE NOT NULL,
+  gross       DECIMAL(10,2),
+  deductions  DECIMAL(10,2),
+  net         DECIMAL(10,2),
+  paid_at     TIMESTAMP
 );
 
 CREATE TABLE performance_reviews (
-  id SERIAL PRIMARY KEY,
+  id          SERIAL PRIMARY KEY,
   employee_id INTEGER REFERENCES employees(id) NOT NULL,
   reviewer_id INTEGER REFERENCES employees(id),
-  score INTEGER CHECK (score BETWEEN 1 AND 10),
-  review_date DATE NOT NULL,
-  notes TEXT
+  rating      SMALLINT CHECK (rating BETWEEN 1 AND 5),
+  notes       TEXT,
+  reviewed_at TIMESTAMP DEFAULT NOW()
 );`,
   },
-];
+  education: {
+    label: "Education",
+    ddl: `-- Education Schema
+CREATE TABLE instructors (
+  id         SERIAL PRIMARY KEY,
+  name       VARCHAR(255) NOT NULL,
+  email      VARCHAR(255) UNIQUE NOT NULL,
+  department VARCHAR(100),
+  hire_date  DATE
+);
 
-interface Column {
-  name: string;
-  type: string;
-  isPrimary: boolean;
-  isForeign: boolean;
-  foreignRef?: string;
-  notNull: boolean;
-}
+CREATE TABLE courses (
+  id            SERIAL PRIMARY KEY,
+  title         VARCHAR(255) NOT NULL,
+  description   TEXT,
+  credits       SMALLINT DEFAULT 3,
+  instructor_id INTEGER REFERENCES instructors(id),
+  max_capacity  INTEGER DEFAULT 30
+);
 
-interface TableInfo {
-  name: string;
-  columns: Column[];
-}
+CREATE TABLE students (
+  id         SERIAL PRIMARY KEY,
+  name       VARCHAR(255) NOT NULL,
+  email      VARCHAR(255) UNIQUE NOT NULL,
+  dob        DATE,
+  gpa        DECIMAL(3,2),
+  enrolled_at TIMESTAMP DEFAULT NOW()
+);
 
-function parseDDL(ddl: string): TableInfo[] {
-  const tables: TableInfo[] = [];
+CREATE TABLE enrollments (
+  id         SERIAL PRIMARY KEY,
+  student_id INTEGER REFERENCES students(id) NOT NULL,
+  course_id  INTEGER REFERENCES courses(id) NOT NULL,
+  term       VARCHAR(20),
+  enrolled_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(student_id, course_id, term)
+);
+
+CREATE TABLE grades (
+  id            SERIAL PRIMARY KEY,
+  student_id    INTEGER REFERENCES students(id) NOT NULL,
+  course_id     INTEGER REFERENCES courses(id) NOT NULL,
+  assignment    VARCHAR(255),
+  score         DECIMAL(5,2),
+  max_score     DECIMAL(5,2) DEFAULT 100,
+  graded_at     TIMESTAMP DEFAULT NOW()
+);`,
+  },
+};
+
+type Column = { name: string; type: string; isPrimary: boolean; isForeign: boolean; notNull: boolean; ref?: string };
+type Table = { name: string; columns: Column[]; x: number; y: number };
+
+function parseDDL(ddl: string): Table[] {
   const tableRegex = /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?["'`]?(\w+)["'`]?\s*\(([^;]+)\)/gi;
+  const tables: Table[] = [];
+  let tIdx = 0;
+
   let match;
   while ((match = tableRegex.exec(ddl)) !== null) {
     const name = match[1];
     const body = match[2];
     const columns: Column[] = [];
-    const lines = body.split(",").map((l) => l.trim()).filter(Boolean);
+
+    const lines = body.split(",").map(l => l.trim()).filter(Boolean);
     for (const line of lines) {
-      if (/^\s*(PRIMARY\s+KEY|UNIQUE|CHECK|CONSTRAINT|INDEX|KEY)\s*\(/i.test(line)) continue;
-      if (/^\s*FOREIGN\s+KEY/i.test(line)) {
-        const fkMatch = line.match(/FOREIGN\s+KEY\s*\((\w+)\)\s*REFERENCES\s+(\w+)/i);
-        if (fkMatch) {
-          const col = columns.find((c) => c.name === fkMatch[1]);
-          if (col) { col.isForeign = true; col.foreignRef = fkMatch[2]; }
-        }
-        continue;
-      }
-      const colMatch = line.match(/^\s*["'`]?(\w+)["'`]?\s+([A-Z][A-Z0-9\s(),]*?)(?:\s+(.*))?$/i);
+      if (/^(PRIMARY\s+KEY|UNIQUE|CHECK|INDEX|CONSTRAINT)/i.test(line)) continue;
+      const colMatch = line.match(/^["'`]?(\w+)["'`]?\s+(\w+(?:\([^)]*\))?)(.*)/i);
       if (!colMatch) continue;
-      const colName = colMatch[1].toUpperCase();
-      if (["PRIMARY","UNIQUE","CHECK","INDEX","KEY","CONSTRAINT"].includes(colName)) continue;
-      const rest = (colMatch[3] ?? "").toUpperCase();
-      const typeRaw = colMatch[2].trim().toUpperCase().split(/\s/)[0];
-      const isPrimary = rest.includes("PRIMARY KEY") || typeRaw.includes("SERIAL");
-      const isForeign = rest.includes("REFERENCES");
-      const foreignRef = isForeign ? (rest.match(/REFERENCES\s+["'`]?(\w+)/i)?.[1] ?? undefined) : undefined;
+      const [, colName, colType, rest] = colMatch;
+      const restU = rest.toUpperCase();
+      const isPrimary = restU.includes("PRIMARY KEY");
+      const isForeign = /REFERENCES\s+(\w+)/i.test(line);
+      const ref = (line.match(/REFERENCES\s+(\w+)/i) || [])[1];
       columns.push({
-        name: colMatch[1],
-        type: colMatch[2].trim().split(/\s/)[0],
+        name: colName,
+        type: colType.toUpperCase(),
         isPrimary,
         isForeign,
-        foreignRef,
-        notNull: isPrimary || rest.includes("NOT NULL"),
+        notNull: restU.includes("NOT NULL") || isPrimary,
+        ref,
       });
     }
-    tables.push({ name, columns });
+
+    const cols = Math.max(tables.length % 3, 0);
+    const row = Math.floor(tIdx / 3);
+    tables.push({ name, columns, x: 40 + cols * 300, y: 40 + row * 320 });
+    tIdx++;
   }
   return tables;
 }
 
-function ERDiagram({ tables }: { tables: TableInfo[] }) {
-  const COLS = Math.max(Math.min(tables.length, 3), 1);
-  const W = 220, H_ROW = 28, H_HEADER = 40, GAP_X = 60, GAP_Y = 40;
-  const positions: Record<string, { x: number; y: number; h: number }> = {};
-  tables.forEach((t, i) => {
-    const col = i % COLS;
-    const row = Math.floor(i / COLS);
-    const h = H_HEADER + t.columns.length * H_ROW + 12;
-    positions[t.name] = { x: col * (W + GAP_X) + 20, y: row * (300 + GAP_Y) + 20, h };
-  });
-  const totalW = COLS * (W + GAP_X) + 20;
-  const totalH = Math.ceil(tables.length / COLS) * (300 + GAP_Y) + 40;
+function ERDiagram({ tables }: { tables: Table[] }) {
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [scale, setScale] = useState(1);
+  const [dragging, setDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 
-  const connections: { x1: number; y1: number; x2: number; y2: number }[] = [];
-  tables.forEach((t) => {
-    t.columns.filter((c) => c.isForeign && c.foreignRef).forEach((c) => {
-      const src = positions[t.name];
-      const tgt = positions[c.foreignRef!];
-      if (!src || !tgt) return;
-      const srcIdx = t.columns.findIndex((col) => col.name === c.name);
-      connections.push({
-        x1: src.x + W,
-        y1: src.y + H_HEADER + srcIdx * H_ROW + H_ROW / 2,
-        x2: tgt.x,
-        y2: tgt.y + H_HEADER / 2,
-      });
-    });
-  });
+  const svgW = Math.max(tables.reduce((m, t) => Math.max(m, t.x + 280), 600), 900);
+  const svgH = Math.max(tables.reduce((m, t) => Math.max(m, t.y + 30 + t.columns.length * 28 + 20), 400), 500);
+
+  const relationships: { from: Table; fromCol: Column; to: Table }[] = [];
+  for (const t of tables) {
+    for (const c of t.columns) {
+      if (c.isForeign && c.ref) {
+        const target = tables.find(tt => tt.name.toLowerCase() === c.ref!.toLowerCase());
+        if (target) relationships.push({ from: t, fromCol: c, to: target });
+      }
+    }
+  }
+
+  const TABLE_W = 260;
+  const ROW_H = 28;
+  const HEADER_H = 38;
 
   return (
-    <svg width={totalW} height={totalH} className="w-full" style={{ minHeight: totalH }}>
-      <defs>
-        <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
-          <path d="M0,0 L0,6 L8,3 z" fill="#7c3aed" opacity={0.6} />
-        </marker>
-      </defs>
-      {connections.map((c, i) => (
-        <path key={i}
-          d={`M${c.x1},${c.y1} C${c.x1 + 40},${c.y1} ${c.x2 - 40},${c.y2} ${c.x2},${c.y2}`}
-          fill="none" stroke="#7c3aed" strokeWidth={1.5} strokeDasharray="5,3"
-          markerEnd="url(#arrow)" opacity={0.5} />
-      ))}
-      {tables.map((t) => {
-        const p = positions[t.name];
-        const h = p.h;
-        return (
-          <g key={t.name} transform={`translate(${p.x},${p.y})`}>
-            <rect x={0} y={0} width={W} height={h} rx={12}
-              fill="#0d0d1f" stroke="#4c1d95" strokeWidth={1.5} />
-            <rect x={0} y={0} width={W} height={H_HEADER} rx={12}
-              fill="#1e1b4b" />
-            <rect x={0} y={H_HEADER - 12} width={W} height={12} fill="#1e1b4b" />
-            <text x={W / 2} y={H_HEADER / 2 + 5} textAnchor="middle"
-              fill="#a78bfa" fontSize={13} fontWeight={700} fontFamily="monospace">
-              {t.name}
-            </text>
-            {t.columns.map((col, ci) => {
-              const cy = H_HEADER + ci * H_ROW;
-              return (
-                <g key={col.name} transform={`translate(0,${cy})`}>
-                  <rect x={0} y={0} width={W} height={H_ROW}
-                    fill={ci % 2 === 0 ? "rgba(255,255,255,.015)" : "transparent"} />
-                  {col.isPrimary && (
-                    <text x={10} y={H_ROW / 2 + 4} fontSize={11} fill="#fbbf24">🔑</text>
-                  )}
-                  {col.isForeign && !col.isPrimary && (
-                    <text x={10} y={H_ROW / 2 + 4} fontSize={11} fill="#7c3aed">🔗</text>
-                  )}
-                  <text x={col.isPrimary || col.isForeign ? 28 : 12} y={H_ROW / 2 + 4}
-                    fontSize={11} fill={col.isPrimary ? "#fbbf24" : col.isForeign ? "#a78bfa" : "#94a3b8"}
-                    fontFamily="monospace">
-                    {col.name}
-                  </text>
-                  <text x={W - 8} y={H_ROW / 2 + 4} textAnchor="end"
-                    fontSize={10} fill="#475569" fontFamily="monospace">
-                    {col.type}{col.notNull && !col.isPrimary ? "!" : ""}
-                  </text>
-                </g>
-              );
-            })}
-          </g>
-        );
-      })}
-    </svg>
+    <div style={{ position: "relative", overflow: "hidden", borderRadius: 12, background: "rgba(10,0,20,0.8)", border: "1px solid rgba(45,15,78,0.4)" }}
+      onWheel={e => setScale(s => Math.max(0.3, Math.min(2.5, s - e.deltaY * 0.001)))}
+      onMouseDown={e => { setDragging(true); setDragStart({ x: e.clientX - offset.x, y: e.clientY - offset.y }); }}
+      onMouseMove={e => { if (dragging) setOffset({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y }); }}
+      onMouseUp={() => setDragging(false)}
+      onMouseLeave={() => setDragging(false)}>
+      <div style={{ position: "absolute", top: 10, right: 10, display: "flex", gap: 6, zIndex: 10 }}>
+        {[["−", () => setScale(s => Math.max(0.3, s - 0.2))], ["+", () => setScale(s => Math.min(2.5, s + 0.2))], ["⟲", () => { setScale(1); setOffset({ x: 0, y: 0 }); }]].map(([label, fn]) => (
+          <button key={String(label)} onClick={fn as () => void} style={{ width: 28, height: 28, borderRadius: 6, background: "rgba(45,15,78,0.6)", border: "1px solid rgba(124,58,237,0.3)", color: "#c084fc", cursor: "pointer", fontSize: 14, fontWeight: 700 }}>{String(label)}</button>
+        ))}
+      </div>
+      <div style={{ fontSize: 11, color: "#4a3d5c", position: "absolute", bottom: 10, left: 12 }}>Scroll to zoom · Drag to pan · {(scale * 100).toFixed(0)}%</div>
+      <svg ref={svgRef} width="100%" height={500} viewBox={`0 0 ${svgW} ${svgH}`} style={{ cursor: dragging ? "grabbing" : "grab" }}>
+        <g transform={`translate(${offset.x},${offset.y}) scale(${scale})`}>
+          {/* Relationship lines */}
+          {relationships.map(({ from, fromCol, to }, i) => {
+            const fx = from.x + TABLE_W;
+            const fy = from.y + HEADER_H + from.columns.indexOf(fromCol) * ROW_H + ROW_H / 2;
+            const tx = to.x;
+            const ty = to.y + HEADER_H / 2;
+            const mx = (fx + tx) / 2;
+            return (
+              <g key={i}>
+                <path d={`M ${fx} ${fy} C ${mx} ${fy} ${mx} ${ty} ${tx} ${ty}`}
+                  fill="none" stroke="rgba(124,58,237,0.5)" strokeWidth={1.5} strokeDasharray="5,3" />
+                <circle cx={tx} cy={ty} r={3} fill="#7c3aed" />
+              </g>
+            );
+          })}
+
+          {/* Tables */}
+          {tables.map((table) => {
+            const tableH = HEADER_H + table.columns.length * ROW_H + 10;
+            return (
+              <g key={table.name} transform={`translate(${table.x},${table.y})`}>
+                <rect width={TABLE_W} height={tableH} rx={10} fill="rgba(26,0,51,0.95)" stroke="rgba(124,58,237,0.4)" strokeWidth={1.5} />
+                <rect width={TABLE_W} height={HEADER_H} rx={10} fill="rgba(124,58,237,0.25)" />
+                <rect y={HEADER_H - 10} width={TABLE_W} height={10} fill="rgba(124,58,237,0.25)" />
+                <text x={12} y={24} fontSize={14} fontWeight={700} fill="#e2d9f3" fontFamily="monospace">{table.name}</text>
+                <text x={TABLE_W - 12} y={24} fontSize={10} fill="#7c6f94" textAnchor="end">{table.columns.length} cols</text>
+                {table.columns.map((col, ci) => (
+                  <g key={col.name} transform={`translate(0,${HEADER_H + ci * ROW_H})`}>
+                    {ci % 2 === 0 && <rect width={TABLE_W} height={ROW_H} fill="rgba(255,255,255,0.02)" />}
+                    <text x={10} y={19} fontSize={11} fill={col.isPrimary ? "#f59e0b" : col.isForeign ? "#c084fc" : "#b8a9cc"} fontFamily="monospace">
+                      {col.isPrimary ? "🔑" : col.isForeign ? "🔗" : "  "} {col.name}
+                    </text>
+                    <text x={TABLE_W - 10} y={19} fontSize={10} fill="#4a3d5c" textAnchor="end" fontFamily="monospace">{col.type}</text>
+                  </g>
+                ))}
+              </g>
+            );
+          })}
+        </g>
+      </svg>
+    </div>
   );
 }
 
-export default function SchemaVaultPage() {
-  const [ddl, setDDL] = useState("");
-  const [editMode, setEditMode] = useState(false);
-  const [editDDL, setEditDDL] = useState("");
-  const [tables, setTables] = useState<TableInfo[]>([]);
-  const [activeTab, setActiveTab] = useState<"er" | "tables">("er");
-  const [schemaLoaded, setSchemaLoaded] = useState(false);
-  const [copied, setCopied] = useState(false);
+export default function SchemaPage() {
+  const [ddl, setDdl] = useState("");
+  const [tables, setTables] = useState<Table[]>([]);
+  const [tab, setTab] = useState<"er" | "tables">("er");
+  const [saved, setSaved] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [editing, setEditing] = useState(false);
 
-  const MAX_CHARS = 50_000;
-  const charCount = ddl.length;
-  const remaining = MAX_CHARS - charCount;
-  const tokens = Math.round(charCount / 4);
+  const charUsed = ddl.length;
+  const charPct = Math.round((charUsed / MAX_DDL) * 100);
 
-  const loadSchema = useCallback((input: string) => {
-    const parsed = parseDDL(input);
-    setTables(parsed);
-    setDDL(input);
-    setSchemaLoaded(parsed.length > 0);
-    if (parsed.length > 0) {
-      sessionStorage.setItem("smartquery_schema_context", input);
-    }
+  useEffect(() => {
+    const saved = localStorage.getItem("sqo_schema_ddl");
+    if (saved) { setDdl(saved); setTables(parseDDL(saved)); }
   }, []);
 
-  const handleLoad = () => loadSchema(editMode ? editDDL : ddl);
-
-  const handleEdit = () => {
-    setEditDDL(ddl);
-    setEditMode(true);
+  const handleDDL = (val: string) => {
+    setDdl(val);
+    const parsed = parseDDL(val);
+    setTables(parsed);
+    localStorage.setItem("sqo_schema_ddl", val);
   };
 
-  const handleSaveEdit = () => {
-    loadSchema(editDDL);
-    setEditMode(false);
-  };
-
-  const handleCancelEdit = () => {
-    setEditMode(false);
-    setEditDDL("");
-  };
-
-  const handleCopy = () => {
-    navigator.clipboard.writeText(ddl);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  const handleClear = () => {
-    setDDL("");
-    setTables([]);
-    setSchemaLoaded(false);
-    sessionStorage.removeItem("smartquery_schema_context");
-  };
-
-  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const text = ev.target?.result as string ?? "";
-      setDDL(text);
-      setEditDDL(text);
-    };
-    reader.readAsText(file);
+  const saveSchema = async () => {
+    setLoading(true);
+    try {
+      const parsed = parseDDL(ddl);
+      await fetch("/api/schema", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ddl, name: "My Schema",
+          tableCount: parsed.length,
+          colCount: parsed.reduce((s, t) => s + t.columns.length, 0),
+          relCount: parsed.reduce((s, t) => s + t.columns.filter(c => c.isForeign).length, 0),
+        }),
+      });
+      setSaved(true); setTimeout(() => setSaved(false), 2000);
+    } catch (e) { console.error(e); } finally { setLoading(false); }
   };
 
   const totalCols = tables.reduce((s, t) => s + t.columns.length, 0);
-  const totalRels = tables.reduce((s, t) => s + t.columns.filter((c) => c.isForeign).length, 0);
+  const totalRels = tables.reduce((s, t) => s + t.columns.filter(c => c.isForeign).length, 0);
 
   return (
-    <div className="p-4 lg:p-6 max-w-[1400px] mx-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
+    <div style={{ padding: "28px 28px 64px", maxWidth: 1400, margin: "0 auto" }}>
+      <div style={{ marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <div>
-          <h1 className="text-xl font-black flex items-center gap-2">
-            <Database className="w-5 h-5 text-emerald-400" />Schema Vault
-            <span className="text-xs font-normal px-2 py-0.5 bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 rounded-lg">NEW</span>
-          </h1>
-          <p className="text-slate-400 text-xs mt-0.5">
-            Upload your Data Definition Language (DDL) → get a visual Entity-Relationship (ER) diagram · Schema injected into Natural Language to SQL for accurate generation
-          </p>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+            <h1 style={{ fontSize: 26, fontWeight: 800, color: "#fff" }}>Schema Vault</h1>
+            <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 4, background: "rgba(124,58,237,0.2)", color: "#c084fc", fontWeight: 700 }}>NEW</span>
+          </div>
+          <p style={{ color: "#7c6f94", fontSize: 14 }}>Upload Data Definition Language (DDL) → get a visual Entity-Relationship (ER) diagram · Schema is injected into Natural Language to SQL for accurate generation</p>
         </div>
-        <div className="flex items-center gap-2">
-          {schemaLoaded && (
-            <Link href="/nl2sql"
-              className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-xl transition-all">
-              Use in NL to SQL →
-            </Link>
-          )}
-          {ddl && (
-            <button onClick={handleClear}
-              className="flex items-center gap-1.5 px-3 py-2 border border-red-500/20 text-red-400 hover:border-red-500/40 rounded-xl text-xs transition-all">
-              <X className="w-3.5 h-3.5" />Clear
-            </button>
-          )}
+        <div style={{ display: "flex", gap: 10 }}>
+          <Link href="/nl2sql" style={{ padding: "8px 16px", borderRadius: 8, background: "linear-gradient(135deg,#7c3aed,#9333ea)", color: "#fff", fontSize: 13, fontWeight: 600, textDecoration: "none" }}>
+            → Use in NL to SQL
+          </Link>
+          <button onClick={() => { setDdl(""); setTables([]); localStorage.removeItem("sqo_schema_ddl"); }} style={{ padding: "8px 16px", borderRadius: 8, background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", color: "#f87171", fontSize: 13, cursor: "pointer" }}>
+            🗑 Clear
+          </button>
         </div>
       </div>
 
-      {/* Stats row (when loaded) */}
-      {schemaLoaded && (
-        <div className="grid grid-cols-3 gap-3 mb-5">
+      {/* Stats cards */}
+      {tables.length > 0 && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
           {[
-            { icon: <Table className="w-4 h-4" />,   label: "Tables",        value: tables.length, color: "emerald" },
-            { icon: <Database className="w-4 h-4" />, label: "Columns",       value: totalCols,     color: "sky"     },
-            { icon: <Link2 className="w-4 h-4" />,    label: "Relationships", value: totalRels,     color: "violet"  },
-          ].map((s) => (
-            <div key={s.label} className={`glass-card rounded-2xl p-4 flex items-center gap-3 border ${
-              s.color === "emerald" ? "border-emerald-500/20 text-emerald-400" :
-              s.color === "sky"     ? "border-sky-500/20 text-sky-400" :
-                                      "border-violet-500/20 text-violet-400"
-            }`}>
-              {s.icon}
-              <div>
-                <div className="text-xl font-black">{s.value}</div>
-                <div className="text-[10px] text-slate-500">{s.label}</div>
+            { icon: "🗂️", label: "Tables", value: tables.length, color: "#7c3aed" },
+            { icon: "📋", label: "Columns", value: totalCols, color: "#06b6d4" },
+            { icon: "🔗", label: "Relationships", value: totalRels, color: "#10b981" },
+            { icon: "📝", label: "Characters Used", value: `${charUsed.toLocaleString()} / ${MAX_DDL.toLocaleString()}`, color: charPct > 80 ? "#ef4444" : "#f59e0b" },
+          ].map(s => (
+            <div key={s.label} style={{ background: "rgba(26,0,51,0.6)", border: "1px solid rgba(45,15,78,0.8)", borderRadius: 12, padding: "16px 20px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                <span style={{ fontSize: 20 }}>{s.icon}</span>
+                {s.label === "Characters Used" && (
+                  <div style={{ width: 50, height: 4, background: "rgba(45,15,78,0.5)", borderRadius: 2 }}>
+                    <div style={{ width: `${charPct}%`, height: "100%", background: s.color, borderRadius: 2 }} />
+                  </div>
+                )}
               </div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: s.color }}>{s.value}</div>
+              <div style={{ fontSize: 12, color: "#7c6f94" }}>{s.label}</div>
             </div>
           ))}
         </div>
       )}
 
-      {/* Schema context banner */}
-      {schemaLoaded && (
-        <div className="mb-5 p-3 bg-emerald-500/8 border border-emerald-500/20 rounded-2xl flex items-center justify-between">
-          <div className="flex items-center gap-2 text-xs text-emerald-300">
-            <Check className="w-4 h-4" />
-            Schema context saved — Natural Language to SQL will use your exact table and column names
-          </div>
-          <Link href="/nl2sql" className="text-xs text-emerald-400 hover:text-emerald-300 transition-colors flex items-center gap-1">
-            Open NL to SQL <ExternalLink className="w-3 h-3" />
-          </Link>
+      {/* Saved banner */}
+      {saved && (
+        <div style={{ background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)", borderRadius: 10, padding: "10px 16px", marginBottom: 16, display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#10b981" }}>
+          ✓ Schema context saved — NL to SQL will use your exact table and column names
+          <Link href="/nl2sql" style={{ marginLeft: "auto", color: "#10b981", fontSize: 12 }}>Open NL to SQL →</Link>
         </div>
       )}
 
-      <div className="grid lg:grid-cols-5 gap-5">
-        {/* LEFT: Input */}
-        <div className="lg:col-span-2 space-y-4">
-          {/* Char usage meter */}
-          <div className="glass-card rounded-2xl p-4 border border-emerald-500/15">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-bold text-slate-300">DDL Usage</span>
-              <span className={`text-xs font-mono ${remaining < 5000 ? "text-amber-400" : "text-slate-400"}`}>
-                {charCount.toLocaleString()} / {MAX_CHARS.toLocaleString()} chars
-              </span>
-            </div>
-            <div className="h-1.5 bg-violet-500/10 rounded-full overflow-hidden mb-2">
-              <div className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-violet-500 transition-all"
-                style={{ width: `${Math.min((charCount / MAX_CHARS) * 100, 100)}%` }} />
-            </div>
-            <div className="flex justify-between text-[10px] text-slate-600">
-              <span>~{tokens.toLocaleString()} tokens</span>
-              <span>{remaining.toLocaleString()} chars remaining</span>
-            </div>
-          </div>
-
-          {/* DDL input or edit mode */}
-          <div className="glass-card rounded-2xl p-4 border border-emerald-500/15">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-bold">Data Definition Language (DDL)</span>
-              <div className="flex items-center gap-2">
-                {ddl && !editMode && (
-                  <>
-                    <button onClick={handleCopy}
-                      className="flex items-center gap-1 text-[10px] text-slate-500 hover:text-emerald-300 transition-colors">
-                      {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                      {copied ? "Copied" : "Copy"}
-                    </button>
-                    <button onClick={handleEdit}
-                      className="flex items-center gap-1 text-[10px] text-slate-500 hover:text-violet-300 transition-colors px-2 py-1 rounded-lg border border-violet-500/15 hover:border-violet-500/40">
-                      <Edit3 className="w-3 h-3" />Edit DDL
-                    </button>
-                  </>
-                )}
-                {editMode && (
-                  <>
-                    <button onClick={handleSaveEdit}
-                      className="flex items-center gap-1 text-[10px] text-emerald-400 hover:text-emerald-300 transition-colors px-2 py-1 rounded-lg border border-emerald-500/20">
-                      <Check className="w-3 h-3" />Save
-                    </button>
-                    <button onClick={handleCancelEdit}
-                      className="flex items-center gap-1 text-[10px] text-slate-500 hover:text-red-400 transition-colors px-2 py-1 rounded-lg border border-slate-500/15">
-                      <X className="w-3 h-3" />Cancel
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
-
-            {editMode ? (
-              <textarea
-                value={editDDL}
-                onChange={(e) => setEditDDL(e.target.value)}
-                className="w-full h-72 bg-[#07071a] rounded-xl border border-emerald-500/20 text-xs font-mono text-slate-200 p-3 resize-none focus:outline-none focus:border-emerald-500/50 leading-relaxed"
-                placeholder="Edit your DDL here..."
-              />
-            ) : (
-              <textarea
-                value={ddl}
-                onChange={(e) => { setDDL(e.target.value); setSchemaLoaded(false); }}
-                className="w-full h-72 bg-[#07071a] rounded-xl border border-emerald-500/15 text-xs font-mono text-slate-200 p-3 resize-none focus:outline-none focus:border-emerald-500/40 placeholder:text-slate-700 leading-relaxed"
-                placeholder={`Paste CREATE TABLE statements here...\n\nExample:\nCREATE TABLE users (\n  id SERIAL PRIMARY KEY,\n  email VARCHAR(255) UNIQUE NOT NULL\n);`}
-              />
-            )}
-
-            <div className="flex gap-2 mt-3">
-              <label className="flex items-center gap-1.5 text-[10px] text-slate-500 hover:text-emerald-300 transition-colors cursor-pointer px-2 py-1.5 rounded-lg border border-emerald-500/10 hover:border-emerald-500/30">
-                <Upload className="w-3 h-3" />Upload .sql
-                <input type="file" accept=".sql,.txt,.ddl" className="hidden" onChange={handleUpload} />
-              </label>
-              <button onClick={handleLoad} disabled={!ddl.trim()}
-                className="flex-1 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center gap-1.5 transition-all disabled:opacity-50">
-                <Database className="w-3.5 h-3.5" />Load Schema & Generate ER Diagram
-              </button>
-            </div>
-          </div>
-
-          {/* Examples */}
-          <div className="glass-card rounded-2xl p-4 border border-violet-500/10">
-            <div className="text-xs font-bold mb-3 text-slate-400">Load an Example Schema</div>
-            <div className="space-y-2">
-              {EXAMPLE_SCHEMAS.map((ex) => (
-                <button key={ex.name}
-                  onClick={() => { setDDL(ex.ddl); setEditDDL(ex.ddl); loadSchema(ex.ddl); }}
-                  className="w-full flex items-center gap-3 p-3 rounded-xl border border-violet-500/10 hover:border-violet-500/30 hover:bg-violet-500/5 transition-all text-left group">
-                  <span className="text-xl">{ex.emoji}</span>
-                  <div>
-                    <div className="text-xs font-semibold group-hover:text-white transition-colors">{ex.name}</div>
-                    <div className="text-[10px] text-slate-500">{parseDDL(ex.ddl).length} tables · click to load</div>
-                  </div>
-                  <ChevronRight className="w-3.5 h-3.5 text-slate-600 ml-auto group-hover:text-violet-400 transition-colors" />
+      <div style={{ display: "grid", gridTemplateColumns: "400px 1fr", gap: 20 }}>
+        {/* LEFT — DDL Editor */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {/* Example Schemas */}
+          <div style={{ background: "rgba(26,0,51,0.6)", border: "1px solid rgba(45,15,78,0.8)", borderRadius: 12, padding: 16 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#7c6f94", letterSpacing: 2, marginBottom: 10 }}>LOAD EXAMPLE SCHEMA</div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {Object.entries(EXAMPLE_SCHEMAS).map(([key, { label }]) => (
+                <button key={key} onClick={() => handleDDL(EXAMPLE_SCHEMAS[key].ddl)} style={{
+                  padding: "6px 12px", borderRadius: 6, border: "1px solid rgba(124,58,237,0.3)",
+                  background: "rgba(124,58,237,0.1)", color: "#c084fc", cursor: "pointer", fontSize: 12, fontWeight: 600,
+                }}>
+                  {label}
                 </button>
               ))}
             </div>
           </div>
+
+          {/* DDL textarea */}
+          <div style={{ background: "rgba(26,0,51,0.6)", border: "1px solid rgba(45,15,78,0.8)", borderRadius: 12, overflow: "hidden", flex: 1 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 14px", borderBottom: "1px solid rgba(45,15,78,0.4)" }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#7c6f94", letterSpacing: 2 }}>Data Definition Language (DDL) EDITOR</span>
+              <div style={{ display: "flex", gap: 8 }}>
+                <label style={{ fontSize: 11, color: "#7c6f94", cursor: "pointer" }}>
+                  <input type="file" accept=".sql,.txt" style={{ display: "none" }}
+                    onChange={e => { const f = e.target.files?.[0]; if (f) { const r = new FileReader(); r.onload = ev => handleDDL(String(ev.target?.result || "")); r.readAsText(f); } }} />
+                  ⬆ Upload
+                </label>
+                <button onClick={saveSchema} disabled={loading || !ddl.trim()} style={{ fontSize: 11, color: "#10b981", background: "none", border: "none", cursor: "pointer" }}>
+                  {loading ? "Saving..." : saved ? "✓ Saved" : "Save"}
+                </button>
+              </div>
+            </div>
+            <textarea value={ddl} onChange={e => handleDDL(e.target.value)}
+              placeholder={`Paste CREATE TABLE statements here...\n\nExample:\nCREATE TABLE users (\n  id SERIAL PRIMARY KEY,\n  email VARCHAR(255) UNIQUE NOT NULL,\n  name VARCHAR(255) NOT NULL,\n  created_at TIMESTAMP DEFAULT NOW()\n);`}
+              style={{ width: "100%", minHeight: 420, background: "transparent", border: "none", outline: "none", color: "#e2d9f3", fontSize: 12, fontFamily: "monospace", padding: 16, resize: "vertical", lineHeight: 1.7 }} />
+            {charUsed > 0 && (
+              <div style={{ padding: "6px 14px", borderTop: "1px solid rgba(45,15,78,0.3)", fontSize: 11, color: "#7c6f94", display: "flex", justifyContent: "space-between" }}>
+                <span>{charUsed.toLocaleString()} / {MAX_DDL.toLocaleString()} characters ({charPct}%)</span>
+                {tables.length > 0 && <span style={{ color: "#10b981" }}>✓ {tables.length} tables detected</span>}
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* RIGHT: ER diagram / tables */}
-        <div className="lg:col-span-3">
-          {schemaLoaded ? (
-            <div className="glass-card rounded-2xl p-5 border border-emerald-500/15">
-              <div className="flex items-center gap-2 mb-4">
-                <button onClick={() => setActiveTab("er")}
-                  className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all border ${activeTab === "er" ? "bg-emerald-600 border-emerald-500 text-white" : "border-violet-500/15 text-slate-400 hover:text-white"}`}>
-                  🗺️ ER Diagram
-                </button>
-                <button onClick={() => setActiveTab("tables")}
-                  className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all border ${activeTab === "tables" ? "bg-violet-600 border-violet-500 text-white" : "border-violet-500/15 text-slate-400 hover:text-white"}`}>
-                  📋 Tables
-                </button>
-              </div>
+        {/* RIGHT — ER Diagram / Tables */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {/* Tab selector */}
+          <div style={{ display: "flex", gap: 4, background: "rgba(26,0,51,0.4)", padding: 4, borderRadius: 10, width: "fit-content" }}>
+            {[["er", "🔷 Entity-Relationship (ER) Diagram"], ["tables", "📋 Tables"]].map(([id, label]) => (
+              <button key={id} onClick={() => setTab(id as "er" | "tables")} style={{
+                padding: "8px 16px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13,
+                background: tab === id ? "linear-gradient(135deg,#7c3aed,#9333ea)" : "transparent",
+                color: tab === id ? "#fff" : "#7c6f94", fontWeight: tab === id ? 700 : 400, transition: "all 0.15s",
+              }}>{label}</button>
+            ))}
+          </div>
 
-              {activeTab === "er" ? (
-                <div className="overflow-auto rounded-xl bg-[#07071a] p-4 border border-emerald-500/10" style={{ minHeight: 320 }}>
-                  <ERDiagram tables={tables} />
-                  <div className="flex items-center gap-4 mt-4 text-[10px] text-slate-600">
-                    <span className="flex items-center gap-1">🔑 Primary Key (PK)</span>
-                    <span className="flex items-center gap-1">🔗 Foreign Key (FK)</span>
-                    <span className="flex items-center gap-1">
-                      <span className="w-6 border-t border-dashed border-violet-500 inline-block align-middle" />Relationship
-                    </span>
-                    <span className="flex items-center gap-1 text-amber-400">! Not Null</span>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-3 max-h-[600px] overflow-y-auto">
-                  {tables.map((t) => (
-                    <div key={t.name} className="glass-card rounded-xl p-4 border border-violet-500/10">
-                      <div className="flex items-center gap-2 mb-3">
-                        <Database className="w-4 h-4 text-violet-400" />
-                        <span className="font-bold text-sm font-mono text-violet-300">{t.name}</span>
-                        <span className="text-[10px] text-slate-600 ml-auto">{t.columns.length} columns</span>
-                      </div>
-                      <div className="space-y-1">
-                        {t.columns.map((col) => (
-                          <div key={col.name} className="flex items-center gap-2 py-1 border-b border-violet-500/5 last:border-0">
-                            <span className="text-sm w-5 flex-shrink-0">
-                              {col.isPrimary ? "🔑" : col.isForeign ? "🔗" : "·"}
-                            </span>
-                            <span className={`text-xs font-mono flex-1 ${col.isPrimary ? "text-yellow-300" : col.isForeign ? "text-violet-300" : "text-slate-300"}`}>
-                              {col.name}
-                            </span>
-                            <span className="text-[10px] font-mono text-slate-500">{col.type}</span>
-                            {col.foreignRef && (
-                              <span className="text-[9px] text-violet-500">→ {col.foreignRef}</span>
-                            )}
-                            {col.notNull && !col.isPrimary && (
-                              <span className="text-[9px] text-amber-500">NOT NULL</span>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+          {tables.length === 0 ? (
+            <div style={{ background: "rgba(26,0,51,0.4)", border: "1px dashed rgba(45,15,78,0.6)", borderRadius: 16, padding: 60, textAlign: "center", flex: 1 }}>
+              <div style={{ fontSize: 48, marginBottom: 16 }}>🗄️</div>
+              <h3 style={{ color: "#fff", marginBottom: 8 }}>Paste Data Definition Language (DDL) to visualize</h3>
+              <p style={{ color: "#7c6f94", fontSize: 14 }}>Load an example schema or paste your own CREATE TABLE statements</p>
             </div>
+          ) : tab === "er" ? (
+            <ERDiagram tables={tables} />
           ) : (
-            <div className="glass-card rounded-2xl p-12 border border-emerald-500/10 flex flex-col items-center justify-center text-center h-full min-h-[400px]">
-              <Database className="w-12 h-12 text-emerald-400/30 mb-4" />
-              <h3 className="font-bold text-slate-300 mb-2">No Schema Loaded</h3>
-              <p className="text-sm text-slate-500 max-w-xs leading-relaxed mb-6">
-                Paste your CREATE TABLE statements on the left, or load an example schema to see the Entity-Relationship diagram.
-              </p>
-              <div className="grid grid-cols-3 gap-3 text-center">
-                {[
-                  { label: "Auto FK Detection",    icon: <Link2 className="w-4 h-4" /> },
-                  { label: "PK / FK Icons",         icon: <Key className="w-4 h-4" />  },
-                  { label: "NL to SQL Injection",   icon: <Database className="w-4 h-4" /> },
-                ].map((f) => (
-                  <div key={f.label} className="glass-card rounded-xl p-3 border border-emerald-500/10 text-center">
-                    <div className="flex justify-center mb-1.5 text-emerald-400">{f.icon}</div>
-                    <div className="text-[10px] text-slate-500 leading-tight">{f.label}</div>
+            <div style={{ background: "rgba(26,0,51,0.6)", border: "1px solid rgba(45,15,78,0.8)", borderRadius: 14, overflow: "auto", maxHeight: 600 }}>
+              {tables.map(table => (
+                <div key={table.name} style={{ borderBottom: "1px solid rgba(45,15,78,0.4)" }}>
+                  <div style={{ padding: "12px 16px", background: "rgba(124,58,237,0.08)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontWeight: 700, color: "#c084fc", fontFamily: "monospace" }}>{table.name}</span>
+                    <span style={{ fontSize: 11, color: "#7c6f94" }}>{table.columns.length} columns</span>
                   </div>
-                ))}
-              </div>
+                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <thead>
+                      <tr>
+                        {["Column", "Type", "Constraints"].map(h => (
+                          <th key={h} style={{ padding: "6px 16px", textAlign: "left", fontSize: 10, fontWeight: 700, color: "#7c6f94", letterSpacing: 1, borderBottom: "1px solid rgba(45,15,78,0.3)" }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {table.columns.map((col, i) => (
+                        <tr key={col.name} style={{ background: i % 2 === 0 ? "transparent" : "rgba(45,15,78,0.1)" }}>
+                          <td style={{ padding: "7px 16px", fontSize: 13, fontFamily: "monospace", color: col.isPrimary ? "#f59e0b" : col.isForeign ? "#c084fc" : "#e2d9f3" }}>
+                            {col.isPrimary ? "🔑 " : col.isForeign ? "🔗 " : ""}{col.name}
+                          </td>
+                          <td style={{ padding: "7px 16px", fontSize: 12, fontFamily: "monospace", color: "#7c6f94" }}>{col.type}</td>
+                          <td style={{ padding: "7px 16px", fontSize: 11, color: "#4a3d5c" }}>
+                            {[col.isPrimary && "PRIMARY KEY", col.notNull && "NOT NULL", col.isForeign && `FK → ${col.ref}`].filter(Boolean).join(", ")}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
             </div>
           )}
         </div>

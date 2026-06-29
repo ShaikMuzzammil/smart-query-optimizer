@@ -1,205 +1,197 @@
 "use client";
-import { useState } from "react";
-import useSWR from "swr";
-import { fetcher } from "@/hooks/useSwrFetcher";
-import { motion } from "framer-motion";
-import { History, Zap, Brain, Search, Copy, Check, ChevronDown, Trash2, Download } from "lucide-react";
+import { useEffect, useState } from "react";
 
-type FeatureFilter = "all" | "optimizer" | "nl2sql";
+const TYPE_LABELS: Record<string, { label: string; icon: string; color: string }> = {
+  optimize: { label: "SQL Optimizer", icon: "⚡", color: "#7c3aed" },
+  nl2sql:   { label: "NL to SQL",     icon: "💬", color: "#06b6d4" },
+  schema:   { label: "Schema Vault",  icon: "🗄️", color: "#10b981" },
+  playground: { label: "Playground",  icon: "▶️", color: "#f59e0b" },
+  example:  { label: "Examples",      icon: "📚", color: "#ec4899" },
+};
 
-function gainColor(g: number) {
-  if (g >= 70) return "text-emerald-400";
-  if (g >= 40) return "text-yellow-400";
-  return "text-slate-400";
-}
+const SEVERITY_COLOR: Record<string, string> = {
+  critical: "#ef4444", high: "#f59e0b", medium: "#eab308", low: "#10b981",
+};
 
-function CopyBtn({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <button onClick={() => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
-      className="flex items-center gap-1 text-[10px] text-slate-500 hover:text-violet-300 transition-colors px-2 py-1 rounded-lg hover:bg-violet-500/10">
-      {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-      {copied ? "Copied" : "Copy"}
-    </button>
-  );
-}
-
-function QueryCard({ q }: { q: any }) {
-  const [expanded, setExpanded] = useState(false);
-  return (
-    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-      className="glass-card rounded-2xl border border-violet-500/10 overflow-hidden">
-      <div className="flex items-center gap-3 p-4 cursor-pointer hover:bg-violet-500/5 transition-all"
-        onClick={() => setExpanded(!expanded)}>
-        <span className="text-lg flex-shrink-0">⚡</span>
-        <div className="flex-1 min-w-0">
-          <div className="text-xs font-semibold truncate text-slate-200">{q.title ?? "SQL Query"}</div>
-          <div className="text-[10px] text-slate-500 mt-0.5">{q.domain} · {new Date(q.createdAt).toLocaleDateString()} · {q.queryType}</div>
-        </div>
-        <span className={`text-sm font-black font-mono flex-shrink-0 ${gainColor(q.performanceGain)}`}>+{q.performanceGain}%</span>
-        <ChevronDown className={`w-4 h-4 text-slate-500 flex-shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`} />
-      </div>
-      {expanded && (
-        <div className="border-t border-violet-500/10 p-4 space-y-3">
-          {q.explanation && <p className="text-xs text-slate-400 leading-relaxed">{q.explanation}</p>}
-          {q.optimizedQuery && (
-            <div className="rounded-xl overflow-hidden border border-violet-500/10 bg-[#07071a]">
-              <div className="flex items-center justify-between px-3 py-1.5 bg-[#0a0a1e] border-b border-violet-500/10">
-                <span className="text-[9px] font-bold tracking-widest text-slate-500">OPTIMIZED QUERY</span>
-                <CopyBtn text={q.optimizedQuery} />
-              </div>
-              <pre className="p-3 text-[11px] font-mono text-slate-300 overflow-x-auto whitespace-pre-wrap leading-relaxed">{q.optimizedQuery}</pre>
-            </div>
-          )}
-          {Array.isArray(q.issues) && q.issues.length > 0 && (
-            <div className="text-[10px] text-slate-500">
-              {q.issues.length} issue{q.issues.length !== 1 ? "s" : ""} fixed ·{" "}
-              {Array.isArray(q.improvements) ? q.improvements.length : 0} improvements applied
-            </div>
-          )}
-        </div>
-      )}
-    </motion.div>
-  );
-}
-
-function ConversionCard({ c }: { c: any }) {
-  const [expanded, setExpanded] = useState(false);
-  return (
-    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-      className="glass-card rounded-2xl border border-sky-500/10 overflow-hidden">
-      <div className="flex items-center gap-3 p-4 cursor-pointer hover:bg-sky-500/5 transition-all"
-        onClick={() => setExpanded(!expanded)}>
-        <span className="text-lg flex-shrink-0">🧠</span>
-        <div className="flex-1 min-w-0">
-          <div className="text-xs font-semibold truncate text-slate-200">{c.inputText ?? "NL2SQL Conversion"}</div>
-          <div className="text-[10px] text-slate-500 mt-0.5">Natural Language to SQL · {c.dialect ?? "SQL"} · {new Date(c.createdAt).toLocaleDateString()}</div>
-        </div>
-        <span className="text-xs font-semibold text-sky-400 flex-shrink-0 px-2 py-0.5 rounded-lg bg-sky-500/10 border border-sky-500/15">NL2SQL</span>
-        <ChevronDown className={`w-4 h-4 text-slate-500 flex-shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`} />
-      </div>
-      {expanded && c.outputText && (
-        <div className="border-t border-sky-500/10 p-4">
-          <div className="rounded-xl overflow-hidden border border-sky-500/10 bg-[#07071a]">
-            <div className="flex items-center justify-between px-3 py-1.5 bg-[#0a0a1e] border-b border-sky-500/10">
-              <span className="text-[9px] font-bold tracking-widest text-slate-500">GENERATED SQL</span>
-              <CopyBtn text={c.outputText} />
-            </div>
-            <pre className="p-3 text-[11px] font-mono text-slate-300 overflow-x-auto whitespace-pre-wrap leading-relaxed">{c.outputText}</pre>
-          </div>
-        </div>
-      )}
-    </motion.div>
-  );
-}
+type Conversion = {
+  id: string; type: string; input: string; output: string | null;
+  dialect: string | null; domain: string | null; issueCount: number;
+  severity: string | null; status: string; modelUsed: string | null;
+  duration: number | null; createdAt: string;
+};
 
 export default function HistoryPage() {
+  const [items, setItems] = useState<Conversion[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<FeatureFilter>("all");
-  const [page, setPage] = useState(1);
-  const PER_PAGE = 10;
+  const [page, setPage] = useState(0);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
 
-  const { data: queryData } = useSWR("/api/queries?limit=100", fetcher, { refreshInterval: 30_000 });
-  const { data: convData }  = useSWR("/api/conversions?limit=100", fetcher, { refreshInterval: 30_000 });
+  const LIMIT = 20;
 
-  const queries      = queryData?.queries ?? [];
-  const conversions  = (convData?.conversions ?? []).filter((c: any) => c.feature === "nl2sql");
+  const load = async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({
+        type: filter, limit: String(LIMIT), offset: String(page * LIMIT),
+        ...(search ? { search } : {}),
+      });
+      const res = await fetch(`/api/conversions?${params}`);
+      const data = await res.json();
+      setItems(data.items || []);
+      setTotal(data.total || 0);
+    } catch (e) { console.error(e); } finally { setLoading(false); }
+  };
 
-  const combined = [
-    ...queries.map((q: any)      => ({ ...q, _type: "optimizer" as const, _date: new Date(q.createdAt) })),
-    ...conversions.map((c: any)  => ({ ...c, _type: "nl2sql" as const,    _date: new Date(c.createdAt) })),
-  ].sort((a, b) => b._date.getTime() - a._date.getTime());
+  useEffect(() => { load(); }, [filter, search, page]);
 
-  const filtered = combined.filter((item) => {
-    if (filter === "optimizer" && item._type !== "optimizer") return false;
-    if (filter === "nl2sql"    && item._type !== "nl2sql")    return false;
-    const q = search.toLowerCase();
-    if (!q) return true;
-    const text = item._type === "optimizer"
-      ? `${item.title ?? ""} ${item.domain ?? ""} ${item.queryType ?? ""}`
-      : `${item.inputText ?? ""} ${item.dialect ?? ""}`;
-    return text.toLowerCase().includes(q);
-  });
+  const copy = (text: string, id: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(id); setTimeout(() => setCopied(null), 2000);
+  };
 
-  const totalPages = Math.ceil(filtered.length / PER_PAGE);
-  const paged = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
-
-  const optCount = combined.filter((i) => i._type === "optimizer").length;
-  const nl2Count = combined.filter((i) => i._type === "nl2sql").length;
+  const totalPages = Math.ceil(total / LIMIT);
 
   return (
-    <div className="p-6 lg:p-8 max-w-4xl mx-auto">
-      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="mb-6">
-        <h1 className="text-2xl font-black mb-1 flex items-center gap-2">
-          <History className="w-6 h-6 text-slate-400" />History
-        </h1>
-        <p className="text-slate-400 text-sm">Complete history across all SmartQuery features</p>
-      </motion.div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-3 gap-3 mb-6">
-        {[
-          { label: "Total Actions",         value: combined.length, color: "violet" },
-          { label: "SQL Optimizations",     value: optCount,        color: "violet" },
-          { label: "NL to SQL Conversions", value: nl2Count,        color: "sky"    },
-        ].map((s) => (
-          <div key={s.label} className={`glass-card rounded-2xl p-4 text-center border ${s.color === "sky" ? "border-sky-500/20" : "border-violet-500/20"}`}>
-            <div className={`text-2xl font-black font-mono ${s.color === "sky" ? "text-sky-300" : "text-violet-300"}`}>{s.value}</div>
-            <div className="text-[10px] text-slate-500 mt-0.5">{s.label}</div>
-          </div>
-        ))}
+    <div style={{ padding: "28px 28px 64px", maxWidth: 1200, margin: "0 auto" }}>
+      <div style={{ marginBottom: 24 }}>
+        <h1 style={{ fontSize: 26, fontWeight: 800, color: "#fff", marginBottom: 6 }}>History</h1>
+        <p style={{ color: "#7c6f94", fontSize: 14 }}>Universal history — all features: SQL Optimizer, Natural Language to SQL, Schema Vault, Playground, and Examples</p>
       </div>
 
-      {/* Filters + search */}
-      <div className="flex items-center gap-3 mb-5 flex-wrap">
-        <div className="flex gap-1 p-1 bg-violet-500/10 rounded-xl">
-          {(["all", "optimizer", "nl2sql"] as const).map((f) => (
-            <button key={f} onClick={() => { setFilter(f); setPage(1); }}
-              className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all capitalize ${filter === f ? "bg-violet-600 text-white" : "text-slate-500 hover:text-white"}`}>
-              {f === "nl2sql" ? "NL to SQL" : f === "optimizer" ? "SQL Optimizer" : "All Features"}
+      {/* Filters */}
+      <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
+        {/* Filter by type */}
+        <div style={{ display: "flex", gap: 6, background: "rgba(26,0,51,0.4)", padding: 4, borderRadius: 10 }}>
+          {[["all", "All Features", "📊"], ...Object.entries(TYPE_LABELS).map(([k, v]) => [k, v.label, v.icon])].map(([id, label, icon]) => (
+            <button key={id} onClick={() => { setFilter(id); setPage(0); }} style={{
+              padding: "7px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12,
+              background: filter === id ? "linear-gradient(135deg,#7c3aed,#9333ea)" : "transparent",
+              color: filter === id ? "#fff" : "#7c6f94", fontWeight: filter === id ? 700 : 400, display: "flex", alignItems: "center", gap: 4,
+            }}>
+              <span>{icon}</span> {label}
             </button>
           ))}
         </div>
-        <div className="flex-1 min-w-[200px] relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-600" />
-          <input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-            placeholder="Search history…"
-            className="w-full bg-[#07071a] rounded-xl border border-violet-500/15 text-xs text-slate-200 py-2 pl-9 pr-3 focus:outline-none focus:border-violet-500/40 placeholder:text-slate-700" />
+
+        {/* Search */}
+        <input value={search} onChange={e => { setSearch(e.target.value); setPage(0); }}
+          placeholder="Search queries..."
+          style={{ flex: 1, minWidth: 200, padding: "8px 14px", borderRadius: 8, background: "rgba(26,0,51,0.6)", border: "1px solid rgba(45,15,78,0.6)", color: "#e2d9f3", fontSize: 13, outline: "none" }} />
+
+        <div style={{ display: "flex", alignItems: "center", fontSize: 13, color: "#7c6f94" }}>
+          {total} total
         </div>
-        <span className="text-[11px] text-slate-500">{filtered.length} results</span>
       </div>
 
-      {/* List */}
-      {paged.length > 0 ? (
-        <div className="space-y-3">
-          {paged.map((item) =>
-            item._type === "optimizer"
-              ? <QueryCard key={`q-${item.id}`} q={item} />
-              : <ConversionCard key={`c-${item.id}`} c={item} />
-          )}
+      {loading ? (
+        <div style={{ textAlign: "center", padding: 60, color: "#7c6f94" }}>
+          <div style={{ width: 40, height: 40, border: "3px solid rgba(124,58,237,0.3)", borderTopColor: "#7c3aed", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 16px" }} />
+          Loading history...
+        </div>
+      ) : items.length === 0 ? (
+        <div style={{ background: "rgba(26,0,51,0.4)", border: "1px dashed rgba(45,15,78,0.6)", borderRadius: 16, padding: 60, textAlign: "center" }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>🕐</div>
+          <h3 style={{ color: "#fff", marginBottom: 8 }}>No history yet</h3>
+          <p style={{ color: "#7c6f94", fontSize: 14 }}>Your query history will appear here after using any feature</p>
         </div>
       ) : (
-        <div className="text-center py-16 text-slate-500">
-          <History className="w-10 h-10 mx-auto mb-3 text-violet-500/20" />
-          <div className="text-sm">
-            {search || filter !== "all" ? "No results match your filter" : "No history yet — start optimizing or converting SQL"}
-          </div>
-        </div>
-      )}
+        <>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {items.map(item => {
+              const meta = TYPE_LABELS[item.type] || { label: item.type, icon: "📄", color: "#7c6f94" };
+              const isExpanded = expanded === item.id;
+              const date = new Date(item.createdAt);
+              return (
+                <div key={item.id} style={{ background: "rgba(26,0,51,0.6)", border: "1px solid rgba(45,15,78,0.6)", borderRadius: 12, overflow: "hidden", transition: "border-color 0.15s" }}
+                  onMouseOver={e => (e.currentTarget.style.borderColor = meta.color + "60")}
+                  onMouseOut={e => (e.currentTarget.style.borderColor = "rgba(45,15,78,0.6)")}>
+                  {/* Row header */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", cursor: "pointer" }}
+                    onClick={() => setExpanded(isExpanded ? null : item.id)}>
+                    {/* Feature badge */}
+                    <div style={{ padding: "4px 10px", borderRadius: 6, background: meta.color + "20", color: meta.color, fontSize: 12, fontWeight: 700, display: "flex", alignItems: "center", gap: 5, minWidth: 130 }}>
+                      {meta.icon} {meta.label}
+                    </div>
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2 mt-6">
-          <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}
-            className="px-4 py-2 rounded-xl border border-violet-500/20 text-xs text-slate-400 hover:text-white hover:border-violet-500/50 disabled:opacity-30 transition-all">
-            Previous
-          </button>
-          <span className="text-xs text-slate-500">{page} / {totalPages}</span>
-          <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages}
-            className="px-4 py-2 rounded-xl border border-violet-500/20 text-xs text-slate-400 hover:text-white hover:border-violet-500/50 disabled:opacity-30 transition-all">
-            Next
-          </button>
-        </div>
+                    {/* Input preview */}
+                    <span style={{ flex: 1, fontSize: 13, color: "#b8a9cc", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: item.type === "nl2sql" ? "inherit" : "monospace" }}>
+                      {item.input.slice(0, 100)}
+                    </span>
+
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                      {item.dialect && <span style={{ fontSize: 11, color: "#7c6f94", padding: "2px 8px", background: "rgba(45,15,78,0.4)", borderRadius: 4 }}>{item.dialect}</span>}
+                      {item.severity && <span style={{ fontSize: 11, fontWeight: 700, color: SEVERITY_COLOR[item.severity] || "#7c6f94" }}>{item.severity.toUpperCase()}</span>}
+                      {item.issueCount > 0 && <span style={{ fontSize: 11, color: "#f59e0b" }}>⚠ {item.issueCount}</span>}
+                      <span style={{ fontSize: 11, color: "#4a3d5c" }}>{date.toLocaleDateString()} {date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                      <span style={{ color: "#7c6f94", fontSize: 14, transition: "transform 0.2s", transform: isExpanded ? "rotate(90deg)" : "rotate(0)" }}>›</span>
+                    </div>
+                  </div>
+
+                  {/* Expanded detail */}
+                  {isExpanded && (
+                    <div style={{ borderTop: "1px solid rgba(45,15,78,0.4)", padding: 16, animation: "fadeIn 0.2s ease" }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                        <div>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: "#7c6f94", letterSpacing: 1, marginBottom: 8 }}>INPUT</div>
+                          <pre style={{ fontSize: 12, color: "#b8a9cc", background: "rgba(10,0,20,0.5)", padding: 12, borderRadius: 8, overflow: "auto", maxHeight: 200, lineHeight: 1.6, margin: 0 }}>
+                            {item.input}
+                          </pre>
+                        </div>
+                        {item.output && (
+                          <div>
+                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                              <span style={{ fontSize: 11, fontWeight: 700, color: "#7c6f94", letterSpacing: 1 }}>OUTPUT</span>
+                              <button onClick={() => copy(item.output!, item.id)} style={{ fontSize: 11, color: copied === item.id ? "#10b981" : "#7c6f94", background: "none", border: "none", cursor: "pointer" }}>
+                                {copied === item.id ? "✓ Copied" : "📋 Copy"}
+                              </button>
+                            </div>
+                            <pre style={{ fontSize: 12, color: "#c3e88d", background: "rgba(10,0,20,0.5)", padding: 12, borderRadius: 8, overflow: "auto", maxHeight: 200, lineHeight: 1.6, margin: 0 }}>
+                              {item.output}
+                            </pre>
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ display: "flex", gap: 16, marginTop: 12, fontSize: 11, color: "#4a3d5c" }}>
+                        {item.modelUsed && <span>Model: {item.modelUsed}</span>}
+                        {item.duration && <span>Duration: {item.duration}ms</span>}
+                        {item.domain && <span>Domain: {item.domain}</span>}
+                        <span>Status: <span style={{ color: item.status === "success" ? "#10b981" : "#f59e0b" }}>{item.status}</span></span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 24 }}>
+              <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}
+                style={{ padding: "8px 16px", borderRadius: 8, background: "rgba(45,15,78,0.4)", border: "1px solid rgba(45,15,78,0.6)", color: page === 0 ? "#4a3d5c" : "#c084fc", cursor: page === 0 ? "not-allowed" : "pointer", fontSize: 13 }}>
+                ← Prev
+              </button>
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                const pg = Math.max(0, Math.min(page - 2 + i, totalPages - 1));
+                return (
+                  <button key={pg} onClick={() => setPage(pg)} style={{
+                    padding: "8px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13,
+                    background: pg === page ? "linear-gradient(135deg,#7c3aed,#9333ea)" : "rgba(45,15,78,0.4)",
+                    color: pg === page ? "#fff" : "#7c6f94",
+                  }}>{pg + 1}</button>
+                );
+              })}
+              <button onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1}
+                style={{ padding: "8px 16px", borderRadius: 8, background: "rgba(45,15,78,0.4)", border: "1px solid rgba(45,15,78,0.6)", color: page >= totalPages - 1 ? "#4a3d5c" : "#c084fc", cursor: page >= totalPages - 1 ? "not-allowed" : "pointer", fontSize: 13 }}>
+                Next →
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

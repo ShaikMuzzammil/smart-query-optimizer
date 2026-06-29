@@ -1,492 +1,287 @@
 "use client";
-import Link from "next/link";
-import { motion } from "framer-motion";
+import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
-import {
-  Zap, Brain, Database, Terminal, BookOpen, BarChart3,
-  ArrowRight, CheckCircle2, ChevronDown, ChevronRight, Shield,
-  Clock, TrendingUp, Code2, Play, Upload, Sparkles, Home,
-} from "lucide-react";
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
 
-const NAV_LINKS = [
-  { label: "Features",    href: "#features"   },
-  { label: "How It Works",href: "#how-it-works"},
-  { label: "Guide",       href: "#guide"       },
-  { label: "Domains",     href: "#domains"     },
-  { label: "FAQ",         href: "#faq"         },
+const DOMAINS = [
+  { icon: "🛒", name: "E-Commerce", desc: "Orders, products, inventory" },
+  { icon: "🏥", name: "Healthcare", desc: "Patients, records, labs" },
+  { icon: "💰", name: "Finance", desc: "Transactions, accounts" },
+  { icon: "👔", name: "HR & Payroll", desc: "Employees, salaries" },
+  { icon: "📦", name: "Logistics", desc: "Shipments, routes" },
+  { icon: "🎓", name: "Education", desc: "Students, courses, grades" },
+  { icon: "🎮", name: "Gaming", desc: "Leaderboards, sessions" },
+  { icon: "🏭", name: "Manufacturing", desc: "Production, inventory" },
+  { icon: "🏢", name: "Real Estate", desc: "Properties, listings" },
+  { icon: "📱", name: "SaaS", desc: "Users, subscriptions, metrics" },
+  { icon: "🏦", name: "Banking", desc: "Accounts, transactions" },
+  { icon: "✈️", name: "Travel", desc: "Bookings, flights, hotels" },
 ];
 
 const FEATURES = [
-  {
-    icon: <Zap className="w-6 h-6" />,
-    title: "SQL Optimizer",
-    desc: "Paste any SQL query — get an AI-rewritten, production-grade version with full analysis: anti-pattern detection, index recommendations, complexity reduction, and Personally Identifiable Information (PII) auto-redaction.",
-    color: "violet",
-    href: "/optimizer",
-    bullets: ["Correlated subquery elimination","Index-aware rewrites","Complexity: O(n²) → O(n log n)","PII auto-redaction before processing"],
-  },
-  {
-    icon: <Brain className="w-6 h-6" />,
-    title: "Natural Language to SQL",
-    desc: "Describe what data you need in plain English — SmartQuery converts it to production-ready SQL for your chosen dialect automatically, with zero hallucinations when your schema is loaded.",
-    color: "sky",
-    href: "/nl2sql",
-    bullets: ["Supports PostgreSQL, MySQL, SQLite, BigQuery","Schema-aware generation","Plain English → production SQL","Example prompts for 12 domains"],
-  },
-  {
-    icon: <Database className="w-6 h-6" />,
-    title: "Schema Vault",
-    desc: "Upload your Data Definition Language (DDL) — instantly get a visual Entity-Relationship (ER) diagram with Primary Key (PK) and Foreign Key (FK) detection. Your schema is then injected into Natural Language to SQL for accurate generation.",
-    color: "emerald",
-    href: "/schema",
-    bullets: ["Auto-detect PK/FK relationships","Live ER diagram visualization","DDL char usage meter","Schema context for NL to SQL"],
-  },
-  {
-    icon: <Terminal className="w-6 h-6" />,
-    title: "SQL Playground",
-    desc: "Run SQL queries directly in-browser against sample databases — no backend, no setup. Perfect for testing optimized queries before deploying.",
-    color: "amber",
-    href: "/playground",
-    bullets: ["In-browser SQL execution engine","Pre-loaded sample databases","Query history with copy options","Live results grid"],
-  },
-  {
-    icon: <BookOpen className="w-6 h-6" />,
-    title: "Example Library",
-    desc: "99 curated, real-world SQL examples across 12 industry domains. Each example is annotated with the anti-patterns it demonstrates and what the optimized version achieves.",
-    color: "pink",
-    href: "/examples",
-    bullets: ["99 queries, 12 domains","Before/After comparisons","Copy, run, or optimize any example","Covers E-Commerce, Healthcare, Finance, HR and more"],
-  },
-  {
-    icon: <BarChart3 className="w-6 h-6" />,
-    title: "Analytics & History",
-    desc: "Full usage analytics across every SmartQuery feature — track your optimization streak, performance gain trends, issue severity breakdown, and Natural Language to SQL conversion counts.",
-    color: "violet",
-    href: "/analytics",
-    bullets: ["Universal stats: all features in one view","14-day activity trend charts","Domain breakdown with average gains","Export history as CSV, JSON, SQL, or PDF"],
-  },
+  { icon: "⚡", title: "SQL Optimizer", desc: "Paste broken SQL — get a production-grade rewrite with anti-pattern detection, index recommendations, and security alerts in seconds.", color: "#7c3aed" },
+  { icon: "💬", title: "Natural Language to SQL", desc: "Describe what data you need in plain English and get a ready-to-run SQL query for any dialect — no schema hallucinations.", color: "#06b6d4" },
+  { icon: "🗄️", title: "Schema Vault", desc: "Upload DDL and get a visual Entity-Relationship diagram with zoomable, scrollable tables and relationship lines.", color: "#10b981" },
+  { icon: "▶️", title: "SQL Playground", desc: "Run SQL queries in-browser against real demo databases (E-Commerce, HR, Education) — zero setup required.", color: "#f59e0b" },
+  { icon: "📚", title: "Query Examples", desc: "99+ production-ready queries across 12 domains with full explanations, copy-to-clipboard, and dialect switching.", color: "#ec4899" },
 ];
 
-const HOW_IT_WORKS = [
-  { step: "01", icon: <Upload className="w-5 h-5" />, title: "Paste Your Query", desc: "Paste SQL directly or upload a .sql file. Your Personally Identifiable Information (PII) — emails, Social Security Numbers, card numbers — is auto-redacted before processing." },
-  { step: "02", icon: <Sparkles className="w-5 h-5" />, title: "AI Analysis Runs", desc: "SmartQuery scans for anti-patterns, calculates complexity class, estimates rows scanned, and identifies index opportunities — all in seconds." },
-  { step: "03", icon: <Code2 className="w-5 h-5" />, title: "Get Optimized SQL", desc: "Receive a fully rewritten SQL query with inline comments, index recommendations, and a side-by-side Before / After comparison." },
-  { step: "04", icon: <Play className="w-5 h-5" />, title: "Test in Playground", desc: "Copy the optimized query straight to SQL Playground and run it against a sample database — no setup required." },
-  { step: "05", icon: <BarChart3 className="w-5 h-5" />, title: "Track Progress", desc: "Every optimization is saved to History and Analytics — watch your performance gain average climb and your query cost scores drop over time." },
-];
-
-const GUIDE_STEPS = [
-  {
-    num: "1",
-    title: "Start with SQL Optimizer for your slowest query",
-    detail: "Go to SQL Optimizer, select your dialect (PostgreSQL, MySQL, SQLite, BigQuery, or MS SQL Server), paste your query, and click Optimize with AI. The Live Scanner instantly highlights issues even before the optimization completes.",
-    tip: "Upload a .sql file for batch optimization.",
-  },
-  {
-    num: "2",
-    title: "Load your schema into Schema Vault for accurate Natural Language to SQL",
-    detail: "Open Schema Vault, paste your Data Definition Language (DDL), and click Load. SmartQuery parses your tables and relationships into a visual Entity-Relationship diagram. Once loaded, all Natural Language to SQL conversions use your exact column and table names.",
-    tip: "Click Use in NL to SQL to inject schema context automatically.",
-  },
-  {
-    num: "3",
-    title: "Use Natural Language to SQL for new query generation",
-    detail: "Open NL to SQL, choose your target dialect, and describe what data you need in plain English. With schema context loaded, the generated SQL will use your real table names — no hallucinations.",
-    tip: "Browse Example Prompts on the right panel for inspiration.",
-  },
-  {
-    num: "4",
-    title: "Test generated or optimized queries in the Playground",
-    detail: "SQL Playground runs SQL entirely in-browser against pre-loaded sample databases. Use it to validate your optimized queries, experiment with JOINs, or try the Example Library queries interactively.",
-    tip: "Use the copy button on any SQL block to move queries between tools.",
-  },
-  {
-    num: "5",
-    title: "Review Analytics and export your work",
-    detail: "Analytics shows your full optimization history, feature usage breakdown, domain distribution, and performance gain trends. From Settings, export all your data as SQL, CSV, JSON, or PDF — each export type lets you choose what to include before downloading.",
-    tip: "A 7-day optimization streak unlocks the Flame badge.",
-  },
-];
-
-const DOMAINS = [
-  { name: "E-Commerce",      icon: "🛒", eg: "Top 10 customers by total spend" },
-  { name: "Healthcare",      icon: "🏥", eg: "Patients with abnormal lab tests" },
-  { name: "Finance",         icon: "💰", eg: "Monthly revenue per category"     },
-  { name: "HR & Payroll",    icon: "👥", eg: "Employees with no review in 6 months" },
-  { name: "SaaS / Analytics",icon: "📊", eg: "Daily active users with rolling average" },
-  { name: "Logistics",       icon: "🚚", eg: "Delayed shipments with carrier info" },
-  { name: "Education",       icon: "🎓", eg: "Students with enrollment counts"  },
-  { name: "Gaming",          icon: "🎮", eg: "Leaderboard by score this month"  },
-  { name: "Banking",         icon: "🏦", eg: "High-value transactions by region" },
-  { name: "Marketing",       icon: "📣", eg: "Campaign conversion funnels"      },
-  { name: "Real Estate",     icon: "🏠", eg: "Average listing price by city"    },
-  { name: "Travel",          icon: "✈️", eg: "Booking trends by route"          },
+const HOW_IT_WORKS_STEPS = [
+  { step: "01", title: "Paste Your SQL", desc: "Drop any SQL query — broken, slow, or complex. Supports PostgreSQL, MySQL, SQLite, BigQuery, and MS SQL Server." },
+  { step: "02", title: "Personally Identifiable Information (PII) Auto-Redacted", desc: "Emails, Social Security Numbers (SSNs), credit card numbers, and phone numbers are detected and masked before reaching the AI engine." },
+  { step: "03", title: "Live Scanner Runs Instantly", desc: "Our static analyzer detects anti-patterns in real time — correlated subqueries, missing indexes, injection vectors — with no API call." },
+  { step: "04", title: "AI Engine Optimizes", desc: "A 5-model fallback chain (gemini-1.5-pro → flash → flash-8b → pro → 1.0-pro) rewrites the query with inline comments explaining every change." },
+  { step: "05", title: "Export & Use", desc: "Copy the optimized SQL, export to SQL file / JSON / CSV / PDF, or jump to the Natural Language to SQL converter for the next query." },
 ];
 
 const FAQS = [
-  {
-    q: "What does PII auto-redaction mean?",
-    a: "Personally Identifiable Information (PII) — such as email addresses, Social Security Numbers (SSN), and credit card numbers — found in your SQL string literals is automatically replaced with [REDACTED_EMAIL], [REDACTED_SSN], etc. before the query is sent for optimization. Your real data never leaves your browser in plain text.",
-  },
-  {
-    q: "What SQL dialects are supported?",
-    a: "SmartQuery supports PostgreSQL, MySQL, SQLite, BigQuery, and MS SQL Server. Each optimizer and NL to SQL run uses dialect-specific syntax, functions, and index types.",
-  },
-  {
-    q: "What does Natural Language to SQL (NL2SQL) mean?",
-    a: "Natural Language to SQL (NL2SQL) is the process of converting a plain-English description of a data query into a valid SQL statement. For example: 'Show me the top 10 customers by total spend last month' becomes a full SELECT with JOINs, GROUP BY, and ORDER BY — ready to run.",
-  },
-  {
-    q: "What is a DDL and why do I need Schema Vault?",
-    a: "Data Definition Language (DDL) is the part of SQL that defines your database structure — CREATE TABLE statements, column types, primary keys, and foreign keys. Uploading your DDL to Schema Vault lets SmartQuery generate an Entity-Relationship (ER) diagram and inject your exact table/column names into Natural Language to SQL so it never invents column names that don't exist.",
-  },
-  {
-    q: "What is an ER diagram?",
-    a: "An Entity-Relationship (ER) diagram is a visual map of your database tables and the relationships between them. Schema Vault auto-generates one from your DDL, marking Primary Key (PK) columns with a key icon and Foreign Key (FK) columns with a link icon.",
-  },
-  {
-    q: "Is my data stored or shared?",
-    a: "Your optimized queries are saved to your account history for your own reference and analytics. Query text is stored securely and never shared. PII is redacted before any AI processing. You can delete your history or export and purge it from Settings at any time.",
-  },
-  {
-    q: "What export formats are available?",
-    a: "From Settings you can export your optimization history as SQL (just the optimized queries), CSV (all metadata in spreadsheet format), JSON (full structured data), or PDF (formatted report). Every export asks you to choose a scope and format before downloading.",
-  },
-  {
-    q: "What environment variables do I need to self-host?",
-    a: "You only need five: GEMINI_API_KEY (from Google AI Studio — free), DATABASE_URL and DIRECT_URL (your Neon PostgreSQL connection strings), NEXTAUTH_SECRET (a random 32-character string), and NEXTAUTH_URL (your deployed app URL).",
-  },
+  { q: "What is Personally Identifiable Information (PII) redaction?", a: "Before any SQL is sent to the AI engine, our regex pipeline scans for and replaces emails, SSNs, phone numbers, and credit card numbers with safe placeholders like [EMAIL_REDACTED]. The original data never leaves your browser unmasked." },
+  { q: "What SQL dialects are supported?", a: "PostgreSQL, MySQL, SQLite, BigQuery, and MS SQL Server. Each has its own reference panel with syntax tips, function lists, and performance best practices." },
+  { q: "What is the AI engine's fallback chain?", a: "The engine tries gemini-1.5-pro first. On failure or quota exhaustion, it cascades through gemini-1.5-flash → gemini-1.5-flash-8b → gemini-pro → gemini-1.0-pro. Even if all AI models fail, the static analyzer still returns useful results." },
+  { q: "What is an Entity-Relationship (ER) diagram?", a: "An ER diagram shows your database tables as boxes and their relationships (foreign keys) as connecting lines. Schema Vault generates one from your Data Definition Language (DDL) automatically." },
+  { q: "What is Natural Language to SQL (NL2SQL)?", a: "NL2SQL converts plain-English descriptions of data needs into runnable SQL. Example: 'Show me the top 10 customers by total spend last month' → full SELECT with JOINs, GROUP BY, ORDER BY, and LIMIT." },
+  { q: "What is Data Definition Language (DDL)?", a: "DDL is the subset of SQL used to define database structure — CREATE TABLE, ALTER TABLE, DROP TABLE. Schema Vault reads DDL to extract table names, column types, and foreign key relationships." },
 ];
 
-const STATS = [
-  { value: "12",     label: "Industry Domains"     },
-  { value: "99",     label: "Example Queries"      },
-  { value: "5",      label: "SQL Dialects"          },
-  { value: "O(n²)→O(n log n)", label: "Complexity Reduction" },
-];
+export default function Home() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
+  const [activeFeature, setActiveFeature] = useState(0);
 
-const FEAT_COLOR: Record<string, string> = {
-  violet:  "bg-violet-500/15 text-violet-400 border-violet-500/25",
-  sky:     "bg-sky-500/15 text-sky-400 border-sky-500/25",
-  emerald: "bg-emerald-500/15 text-emerald-400 border-emerald-500/25",
-  amber:   "bg-amber-500/15 text-amber-400 border-amber-500/25",
-  pink:    "bg-pink-500/15 text-pink-400 border-pink-500/25",
-};
+  useEffect(() => {
+    if (status === "authenticated") {
+      // Don't redirect — let them browse the landing page if they want
+    }
+  }, [status]);
 
-function FaqItem({ q, a }: { q: string; a: string }) {
-  const [open, setOpen] = useState(false);
   return (
-    <div className="glass-card rounded-2xl overflow-hidden border border-violet-500/10">
-      <button className="w-full flex items-center justify-between gap-3 p-5 text-left text-sm font-semibold hover:text-violet-300 transition-colors"
-        onClick={() => setOpen(!open)}>
-        <span>{q}</span>
-        {open ? <ChevronDown className="w-4 h-4 flex-shrink-0 text-violet-400" /> : <ChevronRight className="w-4 h-4 flex-shrink-0 text-slate-500" />}
-      </button>
-      {open && (
-        <div className="px-5 pb-5 text-sm text-slate-400 leading-relaxed border-t border-violet-500/10">
-          <div className="pt-3">{a}</div>
+    <div style={{ background: "#0a0014", color: "#e2d9f3", minHeight: "100vh" }}>
+      {/* NAV */}
+      <nav style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 100, borderBottom: "1px solid rgba(124,58,237,0.2)", background: "rgba(10,0,20,0.9)", backdropFilter: "blur(12px)" }}>
+        <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 24px", display: "flex", alignItems: "center", justifyContent: "space-between", height: 64 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: "linear-gradient(135deg, #7c3aed, #9333ea)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>⚡</div>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 16, lineHeight: 1 }}>
+                <span style={{ color: "#fff" }}>Smart</span><span style={{ color: "#a855f7" }}>Query</span>
+              </div>
+              <div style={{ fontSize: 9, color: "#7c6f94", letterSpacing: 1 }}>SQL Intelligence Platform</div>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 32, fontSize: 14 }}>
+            {["Features", "How It Works", "Domains", "FAQ"].map(s => (
+              <a key={s} href={`#${s.toLowerCase().replace(" ", "-")}`} style={{ color: "#9ca3af", textDecoration: "none" }}
+                onMouseOver={e => (e.currentTarget.style.color = "#c084fc")}
+                onMouseOut={e => (e.currentTarget.style.color = "#9ca3af")}>{s}</a>
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+            {session ? (
+              <Link href="/dashboard" style={{ background: "linear-gradient(135deg,#7c3aed,#9333ea)", color: "#fff", padding: "8px 20px", borderRadius: 8, fontWeight: 600, fontSize: 14, textDecoration: "none" }}>
+                Go to Dashboard →
+              </Link>
+            ) : (
+              <>
+                <Link href="/signin" style={{ color: "#9ca3af", fontSize: 14, textDecoration: "none", display: "flex", alignItems: "center", gap: 6 }}>
+                  → Sign in
+                </Link>
+                <Link href="/signin" style={{ background: "linear-gradient(135deg,#7c3aed,#9333ea)", color: "#fff", padding: "8px 20px", borderRadius: 8, fontWeight: 600, fontSize: 14, textDecoration: "none" }}>
+                  Get Started →
+                </Link>
+              </>
+            )}
+          </div>
         </div>
-      )}
+      </nav>
+
+      {/* HERO */}
+      <section style={{ paddingTop: 140, paddingBottom: 80, textAlign: "center", position: "relative", overflow: "hidden" }}>
+        <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse 80% 50% at 50% 0%, rgba(124,58,237,0.15) 0%, transparent 70%)", pointerEvents: "none" }} />
+        <div style={{ maxWidth: 900, margin: "0 auto", padding: "0 24px", position: "relative" }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "rgba(124,58,237,0.15)", border: "1px solid rgba(124,58,237,0.3)", borderRadius: 20, padding: "6px 16px", fontSize: 13, color: "#c084fc", marginBottom: 32 }}>
+            ✦ SQL performance at production scale
+          </div>
+          <h1 style={{ fontSize: "clamp(48px, 7vw, 80px)", fontWeight: 900, lineHeight: 1.1, marginBottom: 24 }}>
+            <span style={{ color: "#fff" }}>Smart Query</span><br />
+            <span style={{ background: "linear-gradient(135deg, #a855f7, #ec4899)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>Optimizer</span>
+          </h1>
+          <p style={{ fontSize: 14, color: "#7c6f94", marginBottom: 16 }}>SQL Intelligence Platform · 12 Industry Domains</p>
+          <p style={{ fontSize: "clamp(16px, 2.5vw, 20px)", color: "#b8a9cc", marginBottom: 48, maxWidth: 700, margin: "0 auto 48px" }}>
+            Paste broken SQL. Get production-grade rewrites with full analysis — anti-pattern detection, index recommendations, and security alerts in seconds.
+          </p>
+          <div style={{ display: "flex", gap: 16, justifyContent: "center", flexWrap: "wrap" }}>
+            <Link href={session ? "/dashboard" : "/signin"} style={{ background: "linear-gradient(135deg,#7c3aed,#9333ea)", color: "#fff", padding: "14px 32px", borderRadius: 12, fontWeight: 700, fontSize: 16, textDecoration: "none", boxShadow: "0 0 30px rgba(124,58,237,0.4)" }}>
+              Start Optimizing →
+            </Link>
+            <Link href="/signin" style={{ background: "transparent", color: "#e2d9f3", padding: "14px 32px", borderRadius: 12, fontWeight: 600, fontSize: 16, textDecoration: "none", border: "1px solid rgba(124,58,237,0.3)" }}>
+              → Sign In
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* BEFORE/AFTER DEMO */}
+      <section style={{ maxWidth: 1100, margin: "0 auto 80px", padding: "0 24px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+          <div style={{ background: "rgba(239,68,68,0.05)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 16, padding: 24 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#ef4444", letterSpacing: 2, marginBottom: 16 }}>● BEFORE — 3 ANTI-PATTERNS</div>
+            <pre style={{ fontSize: 12, color: "#9ca3af", lineHeight: 1.8, overflow: "auto" }}>{`-- ✗ 3 critical anti-patterns detected
+SELECT p.id, p.name,
+  (SELECT SUM(oi.qty * oi.price)
+   FROM order_items oi
+   WHERE oi.product_id = p.id) AS revenue,
+  (SELECT COUNT(*) FROM reviews r
+   WHERE r.product_id = p.id) AS review_count
+FROM products p
+WHERE YEAR(p.created_at) = 2024;`}</pre>
+          </div>
+          <div style={{ background: "rgba(16,185,129,0.05)", border: "1px solid rgba(16,185,129,0.2)", borderRadius: 16, padding: 24 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#10b981", letterSpacing: 2, marginBottom: 16 }}>● AFTER — OPTIMIZED</div>
+            <pre style={{ fontSize: 12, color: "#9ca3af", lineHeight: 1.8, overflow: "auto" }}>{`-- ✓ LEFT JOIN eliminates N+1 correlated subquery
+-- ✓ Range filter lets index on created_at work
+-- ✓ LIMIT bounds result set safely
+SELECT p.id, p.name,
+  COALESCE(SUM(oi.qty * oi.price), 0) AS revenue,
+  COUNT(DISTINCT r.id) AS review_count
+FROM products p
+LEFT JOIN order_items oi ON oi.product_id = p.id
+LEFT JOIN reviews r ON r.product_id = p.id
+WHERE p.created_at >= '2024-01-01'
+  AND p.created_at < '2025-01-01'
+GROUP BY p.id, p.name
+ORDER BY revenue DESC
+LIMIT 50;`}</pre>
+          </div>
+        </div>
+      </section>
+
+      {/* FEATURES */}
+      <section id="features" style={{ maxWidth: 1100, margin: "0 auto 100px", padding: "0 24px" }}>
+        <div style={{ textAlign: "center", marginBottom: 56 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#7c3aed", letterSpacing: 3, marginBottom: 12 }}>FEATURES</div>
+          <h2 style={{ fontSize: "clamp(28px,4vw,44px)", fontWeight: 800, color: "#fff" }}>Everything your SQL needs</h2>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 20 }}>
+          {FEATURES.map((f, i) => (
+            <div key={f.title} onMouseOver={e => (e.currentTarget.style.borderColor = f.color)} onMouseOut={e => (e.currentTarget.style.borderColor = "rgba(45,15,78,0.8)")}
+              style={{ background: "rgba(26,0,51,0.6)", border: "1px solid rgba(45,15,78,0.8)", borderRadius: 16, padding: 28, transition: "all 0.2s", cursor: "default" }}>
+              <div style={{ fontSize: 32, marginBottom: 16 }}>{f.icon}</div>
+              <h3 style={{ fontSize: 18, fontWeight: 700, color: "#fff", marginBottom: 8 }}>{f.title}</h3>
+              <p style={{ fontSize: 14, color: "#7c6f94", lineHeight: 1.6 }}>{f.desc}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* HOW IT WORKS */}
+      <section id="how-it-works" style={{ background: "rgba(124,58,237,0.04)", borderTop: "1px solid rgba(124,58,237,0.1)", borderBottom: "1px solid rgba(124,58,237,0.1)", padding: "80px 0", marginBottom: 100 }}>
+        <div style={{ maxWidth: 1100, margin: "0 auto", padding: "0 24px" }}>
+          <div style={{ textAlign: "center", marginBottom: 56 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#7c3aed", letterSpacing: 3, marginBottom: 12 }}>HOW IT WORKS</div>
+            <h2 style={{ fontSize: "clamp(28px,4vw,44px)", fontWeight: 800, color: "#fff" }}>From broken SQL to production-ready in seconds</h2>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 24 }}>
+            {HOW_IT_WORKS_STEPS.map((step, i) => (
+              <div key={step.step} style={{ textAlign: "center" }}>
+                <div style={{ width: 52, height: 52, borderRadius: "50%", background: "linear-gradient(135deg,#7c3aed,#9333ea)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px", fontWeight: 800, fontSize: 16, color: "#fff", boxShadow: "0 0 20px rgba(124,58,237,0.4)" }}>
+                  {step.step}
+                </div>
+                <h3 style={{ fontSize: 15, fontWeight: 700, color: "#fff", marginBottom: 8 }}>{step.title}</h3>
+                <p style={{ fontSize: 13, color: "#7c6f94", lineHeight: 1.6 }}>{step.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* GUIDE SECTION */}
+      <section style={{ maxWidth: 1100, margin: "0 auto 100px", padding: "0 24px" }}>
+        <div style={{ textAlign: "center", marginBottom: 56 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#7c3aed", letterSpacing: 3, marginBottom: 12 }}>USER GUIDE</div>
+          <h2 style={{ fontSize: "clamp(28px,4vw,44px)", fontWeight: 800, color: "#fff" }}>How to use each feature</h2>
+        </div>
+        <div style={{ display: "grid", gap: 20 }}>
+          {[
+            { icon: "⚡", title: "SQL Optimizer", steps: ["Paste your SQL query in the editor", "Select your SQL dialect (PostgreSQL, MySQL, SQLite, BigQuery, MS SQL Server)", "Click the dialect Reference button to see syntax tips", "Watch the Live Scanner detect anti-patterns instantly", 'Click "Optimize with AI" to get a full rewrite', "Copy the result or export to SQL/JSON/CSV/PDF"] },
+            { icon: "💬", title: "Natural Language to SQL (NL2SQL)", steps: ["(Optional) Upload your schema in Schema Vault first to prevent hallucinations", "Select your target SQL dialect", 'Type what data you need in plain English — e.g. "Show top 10 customers by revenue last month"', 'Click "Convert to SQL" to get a production-ready query', "The query uses your exact table and column names from Schema Vault", "Copy or load into the SQL Optimizer for further tuning"] },
+            { icon: "🗄️", title: "Schema Vault", steps: ["Paste your Data Definition Language (DDL) — CREATE TABLE statements", "See stats: character count, tables, columns, relationships", "Switch to ER Diagram tab for a visual Entity-Relationship view", "Edit tables and columns directly in the diagram", 'Click "Use in NL to SQL" to inject schema context', "Load example schemas (E-Commerce, HR, Education) to explore"] },
+            { icon: "▶️", title: "SQL Playground", steps: ["Select a demo database (E-Commerce, HR, Education)", "Pick a sample query or write your own", "Click Run to execute in-browser — no server needed", "See results in a formatted table below", "Copy queries with the copy button for use elsewhere"] },
+          ].map(f => (
+            <div key={f.title} style={{ background: "rgba(26,0,51,0.6)", border: "1px solid rgba(45,15,78,0.8)", borderRadius: 16, padding: 28 }}>
+              <h3 style={{ fontSize: 18, fontWeight: 700, color: "#fff", marginBottom: 16 }}>{f.icon} {f.title}</h3>
+              <ol style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 8, listStyle: "none" }}>
+                {f.steps.map((s, i) => (
+                  <li key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start", fontSize: 14, color: "#b8a9cc" }}>
+                    <span style={{ color: "#7c3aed", fontWeight: 700, minWidth: 20 }}>{i+1}.</span>{s}
+                  </li>
+                ))}
+              </ol>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* DOMAINS */}
+      <section id="domains" style={{ maxWidth: 1100, margin: "0 auto 100px", padding: "0 24px" }}>
+        <div style={{ textAlign: "center", marginBottom: 56 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#7c3aed", letterSpacing: 3, marginBottom: 12 }}>12 INDUSTRY DOMAINS</div>
+          <h2 style={{ fontSize: "clamp(28px,4vw,44px)", fontWeight: 800, color: "#fff" }}>Built for every industry</h2>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 16 }}>
+          {DOMAINS.map(d => (
+            <div key={d.name} style={{ background: "rgba(26,0,51,0.6)", border: "1px solid rgba(45,15,78,0.8)", borderRadius: 12, padding: "20px 16px", textAlign: "center" }}>
+              <div style={{ fontSize: 28, marginBottom: 8 }}>{d.icon}</div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: "#fff", marginBottom: 4 }}>{d.name}</div>
+              <div style={{ fontSize: 12, color: "#7c6f94" }}>{d.desc}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* FAQ */}
+      <section id="faq" style={{ maxWidth: 800, margin: "0 auto 100px", padding: "0 24px" }}>
+        <div style={{ textAlign: "center", marginBottom: 56 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#7c3aed", letterSpacing: 3, marginBottom: 12 }}>FAQ</div>
+          <h2 style={{ fontSize: "clamp(28px,4vw,44px)", fontWeight: 800, color: "#fff" }}>Frequently asked questions</h2>
+        </div>
+        <div style={{ display: "grid", gap: 16 }}>
+          {FAQS.map(f => (
+            <FAQItem key={f.q} q={f.q} a={f.a} />
+          ))}
+        </div>
+      </section>
+
+      {/* CTA */}
+      <section style={{ textAlign: "center", padding: "80px 24px 120px", background: "radial-gradient(ellipse 60% 80% at 50% 50%, rgba(124,58,237,0.15) 0%, transparent 70%)" }}>
+        <h2 style={{ fontSize: "clamp(28px,5vw,52px)", fontWeight: 800, color: "#fff", marginBottom: 16 }}>Ready to optimize your SQL?</h2>
+        <p style={{ color: "#7c6f94", marginBottom: 40, fontSize: 16 }}>Join thousands of developers writing faster, safer queries.</p>
+        <Link href="/signin" style={{ background: "linear-gradient(135deg,#7c3aed,#9333ea)", color: "#fff", padding: "16px 40px", borderRadius: 12, fontWeight: 700, fontSize: 18, textDecoration: "none", boxShadow: "0 0 40px rgba(124,58,237,0.5)" }}>
+          Start Free — No Credit Card →
+        </Link>
+      </section>
+
+      {/* FOOTER */}
+      <footer style={{ borderTop: "1px solid rgba(45,15,78,0.6)", padding: "32px 24px", textAlign: "center" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 12 }}>
+          <div style={{ width: 28, height: 28, borderRadius: 8, background: "linear-gradient(135deg,#7c3aed,#9333ea)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>⚡</div>
+          <span style={{ fontWeight: 700, color: "#fff", fontSize: 15 }}>Smart Query Optimizer</span>
+        </div>
+        <p style={{ fontSize: 13, color: "#4a3d5c" }}>SQL Intelligence Platform · AI-Powered · Secure · v7.0</p>
+      </footer>
     </div>
   );
 }
 
-export default function LandingPage() {
-  const { data: session } = useSession();
-  const authed = !!session?.user;
-
+function FAQItem({ q, a }: { q: string; a: string }) {
+  const [open, setOpen] = useState(false);
   return (
-    <div className="min-h-screen bg-[#030308] text-white">
-      {/* Navbar */}
-      <nav className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-6 lg:px-16 h-16 bg-[#030308]/90 backdrop-blur border-b border-violet-500/10">
-        <Link href="/" className="flex items-center gap-2.5 group">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-600 to-violet-800 flex items-center justify-center">
-            <Zap className="w-4 h-4 text-white" />
-          </div>
-          <div>
-            <span className="font-black text-sm">Smart<span className="text-violet-400">Query</span></span>
-            <div className="text-[9px] text-slate-500 -mt-0.5">SQL Intelligence Platform</div>
-          </div>
-        </Link>
-
-        <div className="hidden md:flex items-center gap-6">
-          <Link href="/" className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-violet-300 transition-colors">
-            <Home className="w-3.5 h-3.5" />Home
-          </Link>
-          {NAV_LINKS.map((l) => (
-            <a key={l.href} href={l.href} className="text-xs text-slate-400 hover:text-violet-300 transition-colors">{l.label}</a>
-          ))}
-        </div>
-
-        <div className="flex items-center gap-3">
-          {authed ? (
-            <Link href="/dashboard" className="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold rounded-xl transition-all">
-              Dashboard <ArrowRight className="w-3.5 h-3.5" />
-            </Link>
-          ) : (
-            <>
-              <Link href="/login" className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition-colors px-3 py-2">
-                Sign in
-              </Link>
-              <Link href="/register" className="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold rounded-xl transition-all">
-                Get Started <ArrowRight className="w-3.5 h-3.5" />
-              </Link>
-            </>
-          )}
-        </div>
-      </nav>
-
-      <main className="pt-16">
-        {/* Hero */}
-        <section className="relative overflow-hidden px-6 lg:px-16 pt-20 pb-16 text-center">
-          <div className="absolute inset-0 bg-gradient-to-b from-violet-900/10 via-transparent to-transparent pointer-events-none" />
-          <div className="absolute top-32 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-violet-600/10 blur-[120px] rounded-full pointer-events-none" />
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="relative">
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-violet-500/30 bg-violet-500/10 text-violet-300 text-xs font-medium mb-6">
-              <Sparkles className="w-3.5 h-3.5" />SQL performance at production scale
-            </div>
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black mb-4 leading-[1.1]">
-              Smart Query<br /><span className="text-violet-400">Optimizer</span>
-            </h1>
-            <p className="text-slate-400 text-base sm:text-lg max-w-2xl mx-auto mb-4 leading-relaxed">
-              SQL Intelligence Platform · 12 Industry Domains
-            </p>
-            <p className="text-slate-300 text-sm sm:text-base max-w-xl mx-auto mb-8 leading-relaxed">
-              Paste broken SQL. Get production-grade rewrites with full analysis — anti-pattern detection,
-              index recommendations, and security alerts in seconds.
-            </p>
-            <div className="flex items-center justify-center gap-3 flex-wrap">
-              <Link href={authed ? "/optimizer" : "/register"}
-                className="flex items-center gap-2 px-6 py-3 bg-violet-600 hover:bg-violet-500 text-white font-semibold rounded-xl transition-all text-sm">
-                Start Optimizing <ArrowRight className="w-4 h-4" />
-              </Link>
-              {!authed && (
-                <Link href="/login"
-                  className="flex items-center gap-2 px-6 py-3 border border-white/10 hover:border-violet-500/50 text-slate-300 hover:text-white font-semibold rounded-xl transition-all text-sm bg-white/5">
-                  Sign In
-                </Link>
-              )}
-            </div>
-          </motion.div>
-
-          {/* Stats bar */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 max-w-2xl mx-auto mt-14">
-            {STATS.map((s, i) => (
-              <motion.div key={s.label} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 + i * 0.08 }}
-                className="glass-card rounded-2xl p-4 text-center border border-violet-500/15">
-                <div className="text-lg font-black text-violet-300 font-mono">{s.value}</div>
-                <div className="text-[10px] text-slate-500 mt-0.5">{s.label}</div>
-              </motion.div>
-            ))}
-          </div>
-
-          {/* Before / After demo */}
-          <div className="max-w-4xl mx-auto mt-12 grid sm:grid-cols-2 gap-4">
-            <div className="glass-card rounded-2xl p-5 text-left border border-red-500/20">
-              <div className="flex items-center gap-2 mb-3">
-                <span className="w-2 h-2 rounded-full bg-red-500" />
-                <span className="text-xs font-bold text-red-400 tracking-wider">BEFORE — 3 ANTI-PATTERNS</span>
-              </div>
-              <pre className="text-[11px] text-slate-400 font-mono leading-relaxed whitespace-pre-wrap">
-{`-- ✗ 3 critical anti-patterns detected
-SELECT p.id, p.name,
-  (SELECT SUM(oi.qty * oi.price)
-   FROM order_items oi
-   WHERE oi.product_id = p.id) AS revenue
-FROM products p
-WHERE YEAR(p.created_at) = 2024`}
-              </pre>
-            </div>
-            <div className="glass-card rounded-2xl p-5 text-left border border-emerald-500/20">
-              <div className="flex items-center gap-2 mb-3">
-                <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                <span className="text-xs font-bold text-emerald-400 tracking-wider">AFTER — OPTIMIZED</span>
-              </div>
-              <pre className="text-[11px] text-slate-400 font-mono leading-relaxed whitespace-pre-wrap">
-{`-- ✓ LEFT JOIN eliminates N+1 subquery
--- ✓ Range filter lets index on created_at
--- ✓ LIMIT bounds result set safely
-SELECT p.id, p.name,
-  COALESCE(SUM(oi.qty * oi.price), 0) AS revenue
-FROM products p
-LEFT JOIN order_items oi ON oi.product_id = p.id
-WHERE p.created_at >= '2024-01-01'
-  AND p.created_at < '2025-01-01'
-GROUP BY p.id, p.name
-ORDER BY revenue DESC LIMIT 100`}
-              </pre>
-            </div>
-          </div>
-        </section>
-
-        {/* Features */}
-        <section id="features" className="px-6 lg:px-16 py-20">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl font-black mb-3">Everything You Need</h2>
-            <p className="text-slate-400 text-sm max-w-xl mx-auto">Six integrated tools — from raw SQL optimization to schema visualization and in-browser testing</p>
-          </div>
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5 max-w-6xl mx-auto">
-            {FEATURES.map((f, i) => (
-              <motion.div key={f.title} initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }} transition={{ delay: i * 0.08 }}>
-                <Link href={authed ? f.href : "/register"}
-                  className={`glass-card glass-card-hover rounded-2xl p-6 border ${FEAT_COLOR[f.color]} group flex flex-col h-full`}>
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-4 border ${FEAT_COLOR[f.color]}`}>
-                    {f.icon}
-                  </div>
-                  <h3 className="text-base font-bold mb-2 group-hover:text-white transition-colors">{f.title}</h3>
-                  <p className="text-xs text-slate-400 leading-relaxed mb-4 flex-1">{f.desc}</p>
-                  <ul className="space-y-1.5">
-                    {f.bullets.map((b) => (
-                      <li key={b} className="flex items-start gap-2 text-[11px] text-slate-400">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0 mt-0.5" />
-                        {b}
-                      </li>
-                    ))}
-                  </ul>
-                </Link>
-              </motion.div>
-            ))}
-          </div>
-        </section>
-
-        {/* How It Works */}
-        <section id="how-it-works" className="px-6 lg:px-16 py-20 bg-violet-500/5 border-y border-violet-500/10">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl font-black mb-3">How It Works</h2>
-            <p className="text-slate-400 text-sm max-w-xl mx-auto">From paste to production in five steps</p>
-          </div>
-          <div className="max-w-4xl mx-auto">
-            <div className="relative">
-              <div className="absolute left-6 top-8 bottom-8 w-px bg-gradient-to-b from-violet-500/50 via-violet-500/20 to-transparent hidden sm:block" />
-              <div className="space-y-6">
-                {HOW_IT_WORKS.map((s, i) => (
-                  <motion.div key={s.step} initial={{ opacity: 0, x: -20 }} whileInView={{ opacity: 1, x: 0 }}
-                    viewport={{ once: true }} transition={{ delay: i * 0.1 }}
-                    className="flex gap-5 relative">
-                    <div className="w-12 h-12 rounded-2xl bg-violet-600 flex items-center justify-center flex-shrink-0 border border-violet-400/30 relative z-10">
-                      {s.icon}
-                    </div>
-                    <div className="glass-card rounded-2xl p-5 flex-1 border border-violet-500/15">
-                      <div className="text-[10px] text-violet-400 font-bold tracking-widest mb-1">STEP {s.step}</div>
-                      <div className="text-sm font-bold mb-1">{s.title}</div>
-                      <div className="text-xs text-slate-400 leading-relaxed">{s.desc}</div>
-                    </div>
-                  </motion.div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* Guide */}
-        <section id="guide" className="px-6 lg:px-16 py-20">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl font-black mb-3">Step-by-Step Guide</h2>
-            <p className="text-slate-400 text-sm max-w-xl mx-auto">How to get the most out of SmartQuery — side-by-side with each feature</p>
-          </div>
-          <div className="max-w-4xl mx-auto space-y-5">
-            {GUIDE_STEPS.map((g, i) => (
-              <motion.div key={g.num} initial={{ opacity: 0, y: 14 }} whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }} transition={{ delay: i * 0.07 }}
-                className="glass-card rounded-2xl p-6 border border-violet-500/15 flex gap-5">
-                <div className="w-10 h-10 rounded-2xl bg-violet-500/20 border border-violet-500/30 flex items-center justify-center flex-shrink-0 text-violet-300 font-black text-sm">
-                  {g.num}
-                </div>
-                <div className="flex-1">
-                  <h3 className="text-sm font-bold mb-2">{g.title}</h3>
-                  <p className="text-xs text-slate-400 leading-relaxed mb-3">{g.detail}</p>
-                  <div className="flex items-start gap-2 bg-violet-500/10 rounded-xl p-3 border border-violet-500/15">
-                    <span className="text-violet-400 text-xs font-bold flex-shrink-0">💡 Tip:</span>
-                    <span className="text-xs text-slate-300">{g.tip}</span>
-                  </div>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </section>
-
-        {/* Domains */}
-        <section id="domains" className="px-6 lg:px-16 py-20 bg-violet-500/5 border-y border-violet-500/10">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl font-black mb-3">12 Industry Domains</h2>
-            <p className="text-slate-400 text-sm max-w-xl mx-auto">SmartQuery detects your domain automatically and uses domain-specific optimization strategies</p>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 max-w-4xl mx-auto">
-            {DOMAINS.map((d, i) => (
-              <motion.div key={d.name} initial={{ opacity: 0, scale: 0.95 }} whileInView={{ opacity: 1, scale: 1 }}
-                viewport={{ once: true }} transition={{ delay: i * 0.04 }}
-                className="glass-card rounded-2xl p-4 border border-violet-500/10 hover:border-violet-500/30 transition-all group">
-                <div className="text-2xl mb-2">{d.icon}</div>
-                <div className="text-sm font-bold mb-1 group-hover:text-violet-300 transition-colors">{d.name}</div>
-                <div className="text-[10px] text-slate-500 leading-tight italic">e.g. {d.eg}</div>
-              </motion.div>
-            ))}
-          </div>
-        </section>
-
-        {/* Why SmartQuery */}
-        <section className="px-6 lg:px-16 py-20">
-          <div className="max-w-4xl mx-auto grid md:grid-cols-3 gap-5">
-            {[
-              { icon: <Shield className="w-5 h-5" />,       title: "PII Auto-Redaction",         desc: "Personally Identifiable Information is redacted before any processing. Your real data stays private.",  color: "emerald" },
-              { icon: <Clock className="w-5 h-5" />,        title: "Results in Seconds",          desc: "AI analysis completes in under 5 seconds on most queries. No waiting, no queue.",                         color: "sky"     },
-              { icon: <TrendingUp className="w-5 h-5" />,   title: "Track Your Progress",         desc: "Every optimization is saved. Watch your performance gain average climb over time in Analytics.",           color: "violet"  },
-            ].map((w, i) => (
-              <motion.div key={w.title} initial={{ opacity: 0, y: 14 }} whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }} transition={{ delay: i * 0.1 }}
-                className={`glass-card rounded-2xl p-6 border ${FEAT_COLOR[w.color]}`}>
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-4 border ${FEAT_COLOR[w.color]}`}>
-                  {w.icon}
-                </div>
-                <h3 className="text-sm font-bold mb-2">{w.title}</h3>
-                <p className="text-xs text-slate-400 leading-relaxed">{w.desc}</p>
-              </motion.div>
-            ))}
-          </div>
-        </section>
-
-        {/* FAQ */}
-        <section id="faq" className="px-6 lg:px-16 py-20 bg-violet-500/5 border-t border-violet-500/10">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl font-black mb-3">FAQ</h2>
-            <p className="text-slate-400 text-sm">Glossary of terms and common questions</p>
-          </div>
-          <div className="max-w-3xl mx-auto space-y-3">
-            {FAQS.map((f) => <FaqItem key={f.q} {...f} />)}
-          </div>
-        </section>
-
-        {/* CTA */}
-        <section className="px-6 lg:px-16 py-24 text-center relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-b from-violet-900/10 to-transparent pointer-events-none" />
-          <motion.div initial={{ opacity: 0, scale: 0.95 }} whileInView={{ opacity: 1, scale: 1 }} viewport={{ once: true }}
-            className="relative max-w-xl mx-auto">
-            <h2 className="text-3xl font-black mb-4">Ready to Optimize?</h2>
-            <p className="text-slate-400 text-sm mb-8 leading-relaxed">Join developers who write faster, safer SQL with SmartQuery — free to start, no credit card required.</p>
-            <Link href={authed ? "/dashboard" : "/register"}
-              className="inline-flex items-center gap-2 px-8 py-4 bg-violet-600 hover:bg-violet-500 text-white font-bold rounded-2xl transition-all text-sm">
-              {authed ? "Go to Dashboard" : "Start Free"} <ArrowRight className="w-4 h-4" />
-            </Link>
-          </motion.div>
-        </section>
-
-        {/* Footer */}
-        <footer className="px-6 lg:px-16 py-8 border-t border-violet-500/10 flex items-center justify-between flex-wrap gap-3 text-xs text-slate-600">
-          <div className="flex items-center gap-2">
-            <div className="w-5 h-5 rounded-lg bg-violet-600 flex items-center justify-center">
-              <Zap className="w-3 h-3 text-white" />
-            </div>
-            <span>SmartQuery SQL Intelligence Platform</span>
-          </div>
-          <div className="flex items-center gap-4">
-            {NAV_LINKS.map((l) => (
-              <a key={l.href} href={l.href} className="hover:text-slate-400 transition-colors">{l.label}</a>
-            ))}
-          </div>
-        </footer>
-      </main>
+    <div style={{ background: "rgba(26,0,51,0.6)", border: "1px solid rgba(45,15,78,0.8)", borderRadius: 12, overflow: "hidden" }}>
+      <button onClick={() => setOpen(!open)} style={{ width: "100%", padding: "20px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", background: "none", border: "none", color: "#fff", cursor: "pointer", textAlign: "left", fontSize: 15, fontWeight: 600 }}>
+        {q}
+        <span style={{ color: "#7c3aed", fontSize: 20, transition: "transform 0.2s", transform: open ? "rotate(45deg)" : "rotate(0)" }}>+</span>
+      </button>
+      {open && <div style={{ padding: "0 24px 20px", fontSize: 14, color: "#9ca3af", lineHeight: 1.7, borderTop: "1px solid rgba(45,15,78,0.5)" }}>{a}</div>}
     </div>
   );
 }

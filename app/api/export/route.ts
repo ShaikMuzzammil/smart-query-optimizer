@@ -1,212 +1,49 @@
-// app/api/export/route.ts
-import { NextResponse } from "next/server";
-import { getAuth } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { z } from "zod";
+import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import prisma from "@/lib/prisma";
 
-export const dynamic = "force-dynamic";
+export async function POST(req: NextRequest) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-const schema = z.object({
-  format:   z.enum(["sql", "csv", "json", "pdf"]),
-  scope:    z.enum(["all", "last30", "last7", "favorites"]),
-  features: z.array(z.enum(["optimizer", "nl2sql"])).min(1),
-});
+  const { format = "json", types = ["optimize", "nl2sql"], dateRange = "all", limit = 1000 } = await req.json();
 
-export async function POST(req: Request) {
-  try {
-    const session = await getAuth();
-    if (!session?.user?.id)
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const where: Record<string, unknown> = { userId: session.user.id };
+  if (!types.includes("all")) where.type = { in: types };
+  if (dateRange === "7d") where.createdAt = { gte: new Date(Date.now() - 7 * 86400000) };
+  if (dateRange === "30d") where.createdAt = { gte: new Date(Date.now() - 30 * 86400000) };
 
-    const body = await req.json();
-    const parsed = schema.safeParse(body);
-    if (!parsed.success)
-      return NextResponse.json({ error: "Invalid export options." }, { status: 400 });
+  const data = await prisma.conversion.findMany({
+    where, orderBy: { createdAt: "desc" }, take: limit,
+    select: { id: true, type: true, input: true, output: true, dialect: true, domain: true, issueCount: true, severity: true, status: true, modelUsed: true, duration: true, createdAt: true },
+  });
 
-    const { format, scope, features } = parsed.data;
-    const userId = session.user.id;
-
-    // Date filter
-    const dateFilter = (() => {
-      const now = new Date();
-      if (scope === "last7")  { const d = new Date(now); d.setDate(d.getDate() - 7);  return d; }
-      if (scope === "last30") { const d = new Date(now); d.setDate(d.getDate() - 30); return d; }
-      return undefined;
-    })();
-
-    // Fetch optimizer queries
-    const queries = features.includes("optimizer") ? await db.query.findMany({
-      where: {
-        userId,
-        ...(dateFilter ? { createdAt: { gte: dateFilter } } : {}),
-        ...(scope === "favorites" ? { isFavorited: true } : {}),
-      },
-      orderBy: { createdAt: "desc" },
-    }) : [];
-
-    // Fetch NL2SQL conversions
-    const conversions = features.includes("nl2sql") ? await db.conversion.findMany({
-      where: {
-        userId,
-        feature: "nl2sql",
-        success: true,
-        ...(dateFilter ? { createdAt: { gte: dateFilter } } : {}),
-      },
-      orderBy: { createdAt: "desc" },
-    }) : [];
-
-    // Track export
-    try {
-      await db.conversion.create({
-        data: {
-          userId, feature: "export",
-          metadata: { format, scope, queryCount: queries.length, conversionCount: conversions.length },
-          success: true,
-        },
-      });
-    } catch {}
-
-    // ── Format: SQL ───────────────────────────────────────────────────────────
-    if (format === "sql") {
-      const lines: string[] = [
-        `-- SmartQuery Export: SQL Queries`,
-        `-- Exported: ${new Date().toISOString()}`,
-        `-- Scope: ${scope} | Queries: ${queries.length} | NL2SQL: ${conversions.length}`,
-        "",
-      ];
-      if (queries.length > 0) {
-        lines.push("-- === SQL OPTIMIZER ===", "");
-        queries.forEach((q, i) => {
-          lines.push(`-- ${i + 1}. ${q.title ?? "Query"} | ${q.domain} | +${q.performanceGain}% | ${q.createdAt.toISOString()}`);
-          lines.push(q.optimizedQuery);
-          lines.push("");
-        });
-      }
-      if (conversions.length > 0) {
-        lines.push("-- === NATURAL LANGUAGE TO SQL ===", "");
-        conversions.forEach((c, i) => {
-          const meta = c.metadata as any;
-          lines.push(`-- ${i + 1}. ${c.inputText?.slice(0, 80) ?? "Conversion"} | ${c.dialect ?? "SQL"} | ${c.createdAt.toISOString()}`);
-          if (c.outputText) lines.push(c.outputText);
-          lines.push("");
-        });
-      }
-      return new NextResponse(lines.join("\n"), {
-        headers: { "Content-Type": "text/plain; charset=utf-8" },
-      });
-    }
-
-    // ── Format: CSV ───────────────────────────────────────────────────────────
-    if (format === "csv") {
-      const rows: string[] = [
-        "type,id,title_or_prompt,domain,dialect,performance_gain,issues_count,tables,created_at"
-      ];
-      queries.forEach((q) => rows.push(
-        [
-          "optimizer",
-          q.id,
-          `"${(q.title ?? "").replace(/"/g, "\"\"")}"`,
-          q.domain ?? "",
-          "SQL",
-          q.performanceGain,
-          Array.isArray(q.issues) ? q.issues.length : 0,
-          `"${Array.isArray(q.tablesDetected) ? q.tablesDetected.join(";") : ""}"`,
-          q.createdAt.toISOString(),
-        ].join(",")
-      ));
-      conversions.forEach((c) => rows.push(
-        [
-          "nl2sql",
-          c.id,
-          `"${(c.inputText ?? "").replace(/"/g, "\"\"").slice(0, 100)}"`,
-          (c.metadata as any)?.domain ?? "",
-          c.dialect ?? "SQL",
-          0,
-          0,
-          "",
-          c.createdAt.toISOString(),
-        ].join(",")
-      ));
-      return new NextResponse(rows.join("\n"), {
-        headers: { "Content-Type": "text/csv; charset=utf-8" },
-      });
-    }
-
-    // ── Format: JSON ──────────────────────────────────────────────────────────
-    if (format === "json") {
-      const payload = {
-        exportedAt: new Date().toISOString(),
-        scope,
-        features,
-        summary: { optimizer: queries.length, nl2sql: conversions.length },
-        optimizer: queries.map((q) => ({
-          id: q.id, title: q.title, domain: q.domain, queryType: q.queryType,
-          performanceGain: q.performanceGain, costScore: q.costScore,
-          issues: q.issues, improvements: q.improvements, indexRecs: q.indexRecs,
-          tablesDetected: q.tablesDetected, complexityBefore: q.complexityBefore,
-          complexityAfter: q.complexityAfter, estimatedSpeedup: q.estimatedSpeedup,
-          engine: q.engine, optimizedQuery: q.optimizedQuery, explanation: q.explanation,
-          createdAt: q.createdAt,
-        })),
-        nl2sql: conversions.map((c) => ({
-          id: c.id, prompt: c.inputText, sql: c.outputText,
-          dialect: c.dialect, metadata: c.metadata, createdAt: c.createdAt,
-        })),
-      };
-      return new NextResponse(JSON.stringify(payload, null, 2), {
-        headers: { "Content-Type": "application/json; charset=utf-8" },
-      });
-    }
-
-    // ── Format: PDF (plain text report) ──────────────────────────────────────
-    if (format === "pdf") {
-      const lines: string[] = [
-        "SMARTQUERY EXPORT REPORT",
-        "========================",
-        `Exported: ${new Date().toLocaleString()}`,
-        `Scope: ${scope}`,
-        "",
-        "SUMMARY",
-        "-------",
-        `SQL Optimizations:     ${queries.length}`,
-        `NL to SQL Conversions: ${conversions.length}`,
-        `Total Actions:         ${queries.length + conversions.length}`,
-        "",
-      ];
-      if (queries.length > 0) {
-        lines.push("SQL OPTIMIZER HISTORY", "---------------------", "");
-        queries.forEach((q, i) => {
-          lines.push(
-            `${i + 1}. ${q.title ?? "SQL Query"}`,
-            `   Domain:    ${q.domain ?? "—"}`,
-            `   Gain:      +${q.performanceGain}%`,
-            `   Tables:    ${Array.isArray(q.tablesDetected) ? q.tablesDetected.join(", ") : "—"}`,
-            `   Date:      ${q.createdAt.toLocaleDateString()}`,
-            `   Optimized: ${(q.optimizedQuery ?? "").slice(0, 200)}...`,
-            "",
-          );
-        });
-      }
-      if (conversions.length > 0) {
-        lines.push("NATURAL LANGUAGE TO SQL", "-----------------------", "");
-        conversions.forEach((c, i) => {
-          lines.push(
-            `${i + 1}. ${(c.inputText ?? "").slice(0, 100)}`,
-            `   Dialect: ${c.dialect ?? "SQL"}`,
-            `   Date:    ${c.createdAt.toLocaleDateString()}`,
-            `   SQL:     ${(c.outputText ?? "").slice(0, 200)}...`,
-            "",
-          );
-        });
-      }
-      return new NextResponse(lines.join("\n"), {
-        headers: { "Content-Type": "text/plain; charset=utf-8" },
-      });
-    }
-
-    return NextResponse.json({ error: "Invalid format" }, { status: 400 });
-  } catch (err) {
-    console.error("[EXPORT]", err);
-    return NextResponse.json({ error: "Export failed — please try again." }, { status: 500 });
+  if (format === "json") {
+    const json = JSON.stringify(data, null, 2);
+    return new NextResponse(json, {
+      headers: { "Content-Type": "application/json", "Content-Disposition": "attachment; filename=sqo-export.json" },
+    });
   }
+
+  if (format === "csv") {
+    const headers = ["id", "type", "dialect", "domain", "issueCount", "severity", "status", "modelUsed", "duration", "createdAt", "input", "output"];
+    const rows = data.map(d => headers.map(h => JSON.stringify((d as Record<string,unknown>)[h] ?? "")).join(","));
+    const csv = [headers.join(","), ...rows].join("\n");
+    return new NextResponse(csv, {
+      headers: { "Content-Type": "text/csv", "Content-Disposition": "attachment; filename=sqo-export.csv" },
+    });
+  }
+
+  if (format === "sql") {
+    const sqlDumps = data
+      .filter(d => d.output)
+      .map(d => `-- [${d.type.toUpperCase()}] ${d.createdAt.toISOString()} | ${d.dialect || "N/A"}\n-- Input: ${(d.input || "").slice(0, 100)}\n${d.output}\n`)
+      .join("\n\n---\n\n");
+    return new NextResponse(sqlDumps, {
+      headers: { "Content-Type": "text/plain", "Content-Disposition": "attachment; filename=sqo-queries.sql" },
+    });
+  }
+
+  return NextResponse.json({ error: "Unsupported format" }, { status: 400 });
 }
