@@ -6,12 +6,13 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import { Zap, Mail, Lock, Eye, EyeOff, User, ArrowRight, ArrowLeft, AlertCircle, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
-import { signIn } from "next-auth/react";
+import { signIn, useSession } from "next-auth/react";
 
-const PERKS = ["20 optimizations/hour","NL to SQL converter","PII auto-redaction","99 domain examples","CSV + PDF export","Persistent history"];
+const PERKS = ["Unlimited optimizations","Natural Language to SQL","PII auto-redaction","25 domain examples","CSV + JSON + PDF export","Persistent history"];
 
 export default function RegisterPage() {
   const router = useRouter();
+  const { update } = useSession();
   const [name, setName]       = useState("");
   const [email, setEmail]     = useState("");
   const [password, setPassword] = useState("");
@@ -32,8 +33,13 @@ export default function RegisterPage() {
       if (!res.ok) { setError(data.error ?? "Registration failed."); setLoading(false); return; }
       toast.success("Account created! Signing you in…");
       const signInRes = await signIn("credentials", { email, password, redirect: false });
-      if (signInRes?.ok) router.push("/dashboard");
-      else router.push("/login");
+      if (signInRes?.ok) {
+        await update();
+        router.push("/dashboard");
+        router.refresh();
+      } else {
+        router.push("/login");
+      }
     } catch { setError("Something went wrong. Please try again."); setLoading(false); }
   }
 
@@ -53,14 +59,13 @@ export default function RegisterPage() {
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-purple-700 flex items-center justify-center shadow-lg shadow-violet-500/30">
               <Zap className="w-5 h-5 text-white"/>
             </div>
-            <span className="font-black text-lg">Query<span className="text-violet-400">Forge</span></span>
+            <span className="font-black text-lg">Smart<span className="text-violet-400">Query</span></span>
           </Link>
           <h1 className="text-2xl font-black mb-2">Create your account</h1>
           <p className="text-slate-400 text-sm">Free forever · No credit card required</p>
         </div>
 
-        {/* Perks */}
-        <div className="glass-card rounded-2xl p-4 mb-4">
+        <div className="rounded-2xl p-4 mb-4 bg-[#06061a] border border-violet-500/15">
           <div className="grid grid-cols-2 gap-1.5">
             {PERKS.map(p=>(
               <div key={p} className="flex items-center gap-1.5 text-[11px] text-slate-400">
@@ -70,7 +75,7 @@ export default function RegisterPage() {
           </div>
         </div>
 
-        <div className="glass-card rounded-2xl p-8">
+        <div className="rounded-2xl p-8 bg-[#06061a] border border-violet-500/15">
           {error && (
             <motion.div initial={{opacity:0,y:-8}} animate={{opacity:1,y:0}}
               className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 mb-5 flex items-center gap-2 text-rose-400 text-sm">
@@ -114,7 +119,7 @@ export default function RegisterPage() {
               )}
             </div>
             <button type="submit" disabled={loading}
-              className="w-full py-3 bg-gradient-to-r from-violet-600 to-purple-700 hover:from-violet-500 hover:to-purple-600 disabled:opacity-60 text-white font-bold rounded-xl transition-all flex items-center justify-center gap-2 glow-violet mt-2">
+              className="w-full py-3 bg-gradient-to-r from-violet-600 to-purple-700 hover:from-violet-500 hover:to-purple-600 disabled:opacity-60 text-white font-bold rounded-xl transition-all flex items-center justify-center gap-2 mt-2">
               {loading?<><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"/><span>Creating account…</span></>:<><span>Create Free Account</span><ArrowRight className="w-4 h-4"/></>}
             </button>
           </form>

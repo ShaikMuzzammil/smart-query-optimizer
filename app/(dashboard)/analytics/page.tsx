@@ -1,281 +1,209 @@
 "use client";
+// app/(dashboard)/analytics/page.tsx — FIX #3 & #9: universal across ALL features
 import useSWR from "swr";
-import { fetcher } from "@/hooks/useSwrFetcher";
 import { motion } from "framer-motion";
-import Link from "next/link";
 import {
-  Zap, Brain, Database, Terminal, FileDown, TrendingUp,
-  Flame, BarChart3, AlertTriangle, Target, Clock, Award,
+  BarChart3, TrendingUp, Zap, Brain, Database, Terminal, Download,
+  Flame, Target, AlertTriangle, Award, Activity,
 } from "lucide-react";
-import {
-  ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
-  BarChart, Bar, PieChart, Pie, Cell, Legend, RadarChart, Radar, PolarGrid,
-  PolarAngleAxis, PolarRadiusAxis,
-} from "recharts";
+import { fetcher } from "@/hooks/useSwrFetcher";
+import { ExportMenu } from "@/components/optimizer/ExportMenu";
 
-const DOMAIN_COLORS = [
-  "#7c3aed","#06d6a0","#fbbf24","#38bdf8","#f72585",
-  "#f97316","#10b981","#8b5cf6","#ef4444","#14b8a6","#a855f7","#22d3ee",
-];
+interface AnalyticsData {
+  totalQueries: number; avgGain: number; totalIssuesFixed: number; streak: number;
+  avgCostScore: number | null;
+  domainBreakdown: Array<{ domain: string; count: number; avgGain: number }>;
+  recentTrend: Array<{ date: string; count: number; avg_gain: number }>;
+  topGains: Array<{ id: string; title: string; domain: string; performanceGain: number; createdAt: string }>;
+  issueTypes: Array<{ severity: string; count: number }>;
+  featureUsage: { optimizer: number; nl2sql: number; schema: number; playground: number; export: number };
+  totalActions: number;
+  nl2sqlTrend: Array<{ date: string; count: number }>;
+}
 
-const SEVERITY_COLORS: Record<string, string> = {
-  critical: "#ef4444", high: "#f97316", medium: "#fbbf24", low: "#06d6a0",
-};
-
-const CustomTooltip = ({ active, payload, label }: any) => {
-  if (!active || !payload?.length) return null;
+function StatCard({ icon: Icon, label, value, sub, color }: any) {
   return (
-    <div className="bg-[#0a0a1e] border border-violet-500/30 rounded-xl p-3 text-xs shadow-xl">
-      {label && <div className="text-slate-400 mb-1">{label}</div>}
-      {payload.map((p: any, i: number) => (
-        <div key={i} className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full" style={{ background: p.color || p.fill }} />
-          <span className="text-slate-300">{p.name}:</span>
-          <span className="font-semibold text-white">{typeof p.value === "number" ? (p.name?.includes("Gain") ? `+${p.value}%` : p.value) : p.value}</span>
+    <div className="bg-[#08081a] rounded-xl border border-violet-500/15 p-4">
+      <div className="flex items-center justify-between mb-2">
+        <div className={`w-8 h-8 rounded-lg bg-${color}-500/15 flex items-center justify-center`}>
+          <Icon className={`w-4 h-4 text-${color}-400`}/>
         </div>
-      ))}
+      </div>
+      <div className="text-2xl font-black text-white">{value}</div>
+      <div className="text-[10px] text-slate-500 mt-0.5">{label}</div>
+      {sub && <div className="text-[9px] text-slate-600 mt-1">{sub}</div>}
     </div>
   );
-};
+}
 
 export default function AnalyticsPage() {
-  const { data, isLoading, error } = useSWR("/api/analytics", fetcher, {
-    refreshInterval: 30_000,
-  });
+  const { data, isLoading } = useSWR<AnalyticsData>("/api/analytics", fetcher, { refreshInterval: 30000 });
 
-  const featureCards = [
-    { label: "SQL Optimizations",    value: data?.featureUsage?.optimizer  ?? 0, icon: <Zap className="w-5 h-5" />,      color: "violet",  href: "/optimizer"  },
-    { label: "Natural Lang to SQL",  value: data?.featureUsage?.nl2sql     ?? 0, icon: <Brain className="w-5 h-5" />,    color: "sky",     href: "/nl2sql"     },
-    { label: "Schema Uploads",       value: data?.featureUsage?.schema     ?? 0, icon: <Database className="w-5 h-5" />, color: "emerald", href: "/schema"     },
-    { label: "Playground Runs",      value: data?.featureUsage?.playground ?? 0, icon: <Terminal className="w-5 h-5" />, color: "amber",   href: "/playground" },
-    { label: "Exports",              value: data?.featureUsage?.export     ?? 0, icon: <FileDown className="w-5 h-5" />, color: "pink",    href: "/settings"   },
-  ];
+  if (isLoading || !data) {
+    return (
+      <div className="p-6 min-h-screen flex items-center justify-center">
+        <div className="text-slate-500 text-sm flex items-center gap-2">
+          <Activity className="w-4 h-4 animate-pulse"/> Loading analytics across all features…
+        </div>
+      </div>
+    );
+  }
 
-  const radarData = featureCards.map((f) => ({
-    feature: f.label.split(" ")[0],
-    usage: f.value,
-  }));
-
-  const CARD = {
-    violet:  "bg-violet-500/15 text-violet-400 border-violet-500/25",
-    sky:     "bg-sky-500/15 text-sky-400 border-sky-500/25",
-    emerald: "bg-emerald-500/15 text-emerald-400 border-emerald-500/25",
-    amber:   "bg-amber-500/15 text-amber-400 border-amber-500/25",
-    pink:    "bg-pink-500/15 text-pink-400 border-pink-500/25",
-  } as Record<string, string>;
-
-  const kpis = [
-    { label: "Total Optimizations", value: data?.totalQueries ?? 0,         sub: "SQL queries rewritten",       icon: <Zap className="w-4 h-4" />,       c: "violet"  },
-    { label: "Avg Performance Gain",value: `+${data?.avgGain ?? 0}%`,       sub: "across all queries",          icon: <TrendingUp className="w-4 h-4" />, c: "emerald" },
-    { label: "Issues Auto-Fixed",   value: data?.totalIssuesFixed ?? 0,     sub: "anti-patterns removed",       icon: <AlertTriangle className="w-4 h-4"/>,c: "amber"  },
-    { label: "Day Streak",          value: data?.streak ?? 0,               sub: "consecutive active days",     icon: <Flame className="w-4 h-4" />,      c: "violet"  },
-    { label: "Avg Cost Score",      value: data?.avgCostScore ?? "—",       sub: "lower = cheaper queries",     icon: <Target className="w-4 h-4" />,     c: "sky"     },
-    { label: "Total Actions",       value: data?.totalActions ?? 0,         sub: "across all features",         icon: <Award className="w-4 h-4" />,      c: "emerald" },
-  ];
+  const maxTrendCount = Math.max(1, ...data.recentTrend.map(t => t.count));
+  const maxFeature = Math.max(1, ...Object.values(data.featureUsage));
 
   return (
-    <div className="p-6 lg:p-8 max-w-[1500px] mx-auto">
-      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="mb-7">
-        <h1 className="text-2xl font-black mb-1 flex items-center gap-2">
-          <BarChart3 className="w-6 h-6 text-violet-400" />Analytics
-        </h1>
-        <p className="text-slate-400 text-sm">Complete usage statistics across all SmartQuery features</p>
-      </motion.div>
-
-      {error && (
-        <div className="glass-card border border-red-500/30 rounded-2xl p-4 mb-6 text-red-400 text-sm">
-          Could not load analytics — please refresh.
+    <div className="p-6 min-h-screen">
+      <div className="flex items-start justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-black text-white flex items-center gap-2">
+            <BarChart3 className="w-6 h-6 text-violet-400"/> Analytics
+          </h1>
+          {/* FIX #3 & #9: universal, all features */}
+          <p className="text-slate-400 text-sm mt-1">
+            Performance statistics across your <strong className="text-violet-400">entire</strong> SmartQuery activity — Optimizer, Natural Language to SQL, Schema Vault, and Playground
+          </p>
         </div>
-      )}
-
-      {/* KPI grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
-        {kpis.map((k, i) => (
-          <motion.div key={k.label} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
-            className="glass-card rounded-2xl p-4 text-center">
-            <div className={`w-8 h-8 rounded-lg flex items-center justify-center mb-2 mx-auto border ${CARD[k.c]}`}>
-              {k.icon}
-            </div>
-            <div className={`text-xl font-black font-mono ${
-              k.c === "violet" ? "text-violet-300" : k.c === "sky" ? "text-sky-300" :
-              k.c === "emerald" ? "text-emerald-300" : k.c === "amber" ? "text-amber-300" : "text-rose-300"
-            }`}>{isLoading ? "…" : k.value}</div>
-            <div className="text-[10px] text-slate-400 font-medium mt-0.5">{k.label}</div>
-            <div className="text-[9px] text-slate-600 mt-0.5 leading-tight">{k.sub}</div>
-          </motion.div>
-        ))}
+        <ExportMenu label="Export Analytics" advancedMode/>
       </div>
 
-      {/* Feature usage cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
-        {featureCards.map((f, i) => (
-          <motion.div key={f.label} initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: i * 0.04 }}>
-            <Link href={f.href}
-              className={`glass-card glass-card-hover rounded-2xl p-4 flex flex-col items-center text-center gap-2 border ${CARD[f.color]} group`}>
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center border ${CARD[f.color]}`}>
-                {f.icon}
-              </div>
-              <div className={`text-2xl font-black font-mono ${
-                f.color === "violet" ? "text-violet-300" : f.color === "sky" ? "text-sky-300" :
-                f.color === "emerald" ? "text-emerald-300" : f.color === "amber" ? "text-amber-300" : "text-pink-300"
-              }`}>{isLoading ? "…" : f.value}</div>
-              <div className="text-[11px] text-slate-400 font-medium leading-tight group-hover:text-white transition-colors">{f.label}</div>
-            </Link>
-          </motion.div>
-        ))}
+      {/* Universal feature usage — FIX #9 */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+        <StatCard icon={Zap}      label="SQL Optimizer runs"   value={data.featureUsage.optimizer}  color="violet"/>
+        <StatCard icon={Brain}    label="NL to SQL conversions" value={data.featureUsage.nl2sql}     color="sky"/>
+        <StatCard icon={Database} label="Schema loads"          value={data.featureUsage.schema}     color="emerald"/>
+        <StatCard icon={Terminal} label="Playground runs"       value={data.featureUsage.playground} color="amber"/>
+        <StatCard icon={Download} label="Exports"                value={data.featureUsage.export}     color="pink"/>
       </div>
 
-      {/* Charts row */}
-      <div className="grid lg:grid-cols-3 gap-5 mb-6">
-        {/* 14-day optimizer trend */}
-        <div className="lg:col-span-2 glass-card rounded-2xl p-5">
-          <div className="text-sm font-bold mb-4 flex items-center gap-2">
-            <TrendingUp className="w-4 h-4 text-emerald-400" />SQL Optimizer — 14-Day Trend
-          </div>
-          {data?.recentTrend?.length > 0 ? (
-            <ResponsiveContainer width="100%" height={200}>
-              <AreaChart data={data.recentTrend} margin={{ top: 4, right: 4, left: -24, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="grad1" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#7c3aed" stopOpacity={0.5} />
-                    <stop offset="95%" stopColor="#7c3aed" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="grad2" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#06d6a0" stopOpacity={0.4} />
-                    <stop offset="95%" stopColor="#06d6a0" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.04)" />
-                <XAxis dataKey="date" tick={{ fill: "#64748b", fontSize: 9 }} axisLine={false} tickLine={false}
-                  tickFormatter={(d) => new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric" })} />
-                <YAxis tick={{ fill: "#64748b", fontSize: 9 }} axisLine={false} tickLine={false} yAxisId="left" />
-                <YAxis tick={{ fill: "#64748b", fontSize: 9 }} axisLine={false} tickLine={false} yAxisId="right" orientation="right" />
-                <Tooltip content={<CustomTooltip />} />
-                <Area yAxisId="left" type="monotone" dataKey="count" name="Queries" stroke="#7c3aed" strokeWidth={2} fill="url(#grad1)" />
-                <Area yAxisId="right" type="monotone" dataKey="avg_gain" name="Avg Gain %" stroke="#06d6a0" strokeWidth={2} fill="url(#grad2)" />
-              </AreaChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="h-[200px] flex items-center justify-center text-slate-500 text-sm">No data yet — start optimizing!</div>
-          )}
-        </div>
-
-        {/* Feature radar */}
-        <div className="glass-card rounded-2xl p-5">
-          <div className="text-sm font-bold mb-4 flex items-center gap-2">
-            <BarChart3 className="w-4 h-4 text-violet-400" />Feature Usage Radar
-          </div>
-          {data?.totalActions > 0 ? (
-            <ResponsiveContainer width="100%" height={200}>
-              <RadarChart data={radarData} margin={{ top: 4, right: 20, left: 20, bottom: 4 }}>
-                <PolarGrid stroke="rgba(255,255,255,.08)" />
-                <PolarAngleAxis dataKey="feature" tick={{ fill: "#94a3b8", fontSize: 10 }} />
-                <PolarRadiusAxis tick={{ fill: "#64748b", fontSize: 8 }} axisLine={false} />
-                <Radar name="Usage" dataKey="usage" stroke="#7c3aed" fill="#7c3aed" fillOpacity={0.3} />
-              </RadarChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="h-[200px] flex items-center justify-center text-slate-500 text-sm text-center">
-              Use multiple features to see radar chart
-            </div>
-          )}
-        </div>
+      {/* Top stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        <StatCard icon={Activity}  label="Total actions (all features)" value={data.totalActions} color="violet" sub="Lifetime"/>
+        <StatCard icon={TrendingUp}label="Avg performance gain" value={`+${data.avgGain}%`} color="emerald" sub="SQL Optimizer"/>
+        <StatCard icon={Target}    label="Issues fixed"  value={data.totalIssuesFixed} color="amber" sub="Anti-patterns resolved"/>
+        <StatCard icon={Flame}     label="Activity streak" value={`${data.streak} ${data.streak===1?"day":"days"}`} color="orange" sub="Consecutive days active"/>
       </div>
 
-      {/* Domain breakdown + issue types */}
-      <div className="grid lg:grid-cols-2 gap-5 mb-6">
-        {/* Domain breakdown */}
-        <div className="glass-card rounded-2xl p-5">
-          <div className="text-sm font-bold mb-4 flex items-center gap-2">
-            <Database className="w-4 h-4 text-sky-400" />Optimization by Domain
-          </div>
-          {data?.domainBreakdown?.length > 0 ? (
-            <>
-              <ResponsiveContainer width="100%" height={180}>
-                <BarChart data={data.domainBreakdown.slice(0, 8)} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.04)" />
-                  <XAxis dataKey="domain" tick={{ fill: "#64748b", fontSize: 9 }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fill: "#64748b", fontSize: 9 }} axisLine={false} tickLine={false} />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Bar dataKey="count" name="Queries" radius={[4, 4, 0, 0]}>
-                    {data.domainBreakdown.slice(0, 8).map((_: any, index: number) => (
-                      <Cell key={index} fill={DOMAIN_COLORS[index % DOMAIN_COLORS.length]} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-              <div className="mt-3 space-y-1.5">
-                {data.domainBreakdown.slice(0, 5).map((d: any, i: number) => (
-                  <div key={d.domain} className="flex items-center gap-2 text-xs">
-                    <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: DOMAIN_COLORS[i] }} />
-                    <span className="flex-1 text-slate-300">{d.domain}</span>
-                    <span className="text-slate-400">{d.count} queries</span>
-                    <span className="text-emerald-400 font-mono">+{d.avgGain}%</span>
-                  </div>
-                ))}
-              </div>
-            </>
-          ) : (
-            <div className="h-[180px] flex items-center justify-center text-slate-500 text-sm">No domain data yet</div>
-          )}
-        </div>
-
-        {/* Issue severity breakdown */}
-        <div className="glass-card rounded-2xl p-5">
-          <div className="text-sm font-bold mb-4 flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-amber-400" />Issues Fixed by Severity
-          </div>
-          {data?.issueTypes?.length > 0 ? (
-            <>
-              <ResponsiveContainer width="100%" height={180}>
-                <PieChart>
-                  <Pie data={data.issueTypes} cx="50%" cy="50%" innerRadius={50} outerRadius={80}
-                    dataKey="count" nameKey="severity" paddingAngle={3}>
-                    {data.issueTypes.map((entry: any, i: number) => (
-                      <Cell key={i} fill={SEVERITY_COLORS[entry.severity] ?? "#7c3aed"} />
-                    ))}
-                  </Pie>
-                  <Tooltip content={<CustomTooltip />} />
-                  <Legend formatter={(v) => <span className="text-[11px] text-slate-300">{v}</span>} />
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="mt-3 space-y-1.5">
-                {data.issueTypes.map((t: any) => (
-                  <div key={t.severity} className="flex items-center gap-2 text-xs">
-                    <span className="w-2 h-2 rounded-full flex-shrink-0"
-                      style={{ background: SEVERITY_COLORS[t.severity] ?? "#7c3aed" }} />
-                    <span className="capitalize flex-1 text-slate-300">{t.severity}</span>
-                    <span className="font-mono text-slate-400">{t.count} issues fixed</span>
-                  </div>
-                ))}
-              </div>
-            </>
-          ) : (
-            <div className="h-[180px] flex items-center justify-center text-slate-500 text-sm">No issues data yet</div>
-          )}
-        </div>
-      </div>
-
-      {/* Top gains */}
-      {data?.topGains?.length > 0 && (
-        <div className="glass-card rounded-2xl p-5">
-          <div className="text-sm font-bold mb-4 flex items-center gap-2">
-            <Award className="w-4 h-4 text-yellow-400" />Top 5 Performance Wins
-          </div>
-          <div className="space-y-2">
-            {data.topGains.map((q: any, i: number) => (
-              <div key={q.id} className="flex items-center gap-3 py-2 border-b border-violet-500/5 last:border-0">
-                <span className="text-sm font-black text-slate-500 w-5 flex-shrink-0">#{i + 1}</span>
-                <div className="flex-1 min-w-0">
-                  <div className="text-xs font-medium truncate text-slate-200">{q.title ?? "SQL Query"}</div>
-                  <div className="text-[10px] text-slate-500">{q.domain} · {new Date(q.createdAt).toLocaleDateString()}</div>
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-6">
+        {/* Feature usage bar chart */}
+        <div className="bg-[#08081a] rounded-2xl border border-violet-500/15 p-5">
+          <h3 className="text-xs font-bold text-violet-400 uppercase tracking-wider mb-4">Feature Usage Breakdown</h3>
+          <div className="space-y-3">
+            {[
+              { label: "SQL Optimizer", value: data.featureUsage.optimizer, icon: Zap, color: "violet" },
+              { label: "Natural Language to SQL", value: data.featureUsage.nl2sql, icon: Brain, color: "sky" },
+              { label: "Schema Vault", value: data.featureUsage.schema, icon: Database, color: "emerald" },
+              { label: "Playground", value: data.featureUsage.playground, icon: Terminal, color: "amber" },
+            ].map(f => (
+              <div key={f.label}>
+                <div className="flex items-center justify-between text-[11px] mb-1">
+                  <span className="text-slate-300 flex items-center gap-1.5"><f.icon className="w-3 h-3"/>{f.label}</span>
+                  <span className="text-slate-500">{f.value}</span>
                 </div>
-                <div className="text-sm font-black text-emerald-400 font-mono">+{q.performanceGain}%</div>
+                <div className="h-2 rounded-full bg-slate-800 overflow-hidden">
+                  <motion.div initial={{ width: 0 }} animate={{ width: `${(f.value/maxFeature)*100}%` }}
+                    className={`h-full rounded-full bg-${f.color}-500`}/>
+                </div>
               </div>
             ))}
           </div>
         </div>
-      )}
+
+        {/* Domain breakdown */}
+        <div className="bg-[#08081a] rounded-2xl border border-violet-500/15 p-5">
+          <h3 className="text-xs font-bold text-violet-400 uppercase tracking-wider mb-4">Optimizations by Domain</h3>
+          {data.domainBreakdown.length === 0 ? (
+            <p className="text-slate-600 text-xs py-8 text-center">No optimizations yet — run your first query!</p>
+          ) : (
+            <div className="space-y-3">
+              {data.domainBreakdown.slice(0, 6).map(d => (
+                <div key={d.domain}>
+                  <div className="flex items-center justify-between text-[11px] mb-1">
+                    <span className="text-slate-300">{d.domain ?? "General"}</span>
+                    <span className="text-slate-500">{d.count} queries · avg +{d.avgGain}%</span>
+                  </div>
+                  <div className="h-2 rounded-full bg-slate-800 overflow-hidden">
+                    <motion.div initial={{ width: 0 }} animate={{ width: `${(d.count/Math.max(1,data.domainBreakdown[0].count))*100}%` }}
+                      className="h-full rounded-full bg-gradient-to-r from-violet-500 to-purple-600"/>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-6">
+        {/* 14-day trend */}
+        <div className="bg-[#08081a] rounded-2xl border border-violet-500/15 p-5">
+          <h3 className="text-xs font-bold text-violet-400 uppercase tracking-wider mb-4">14-Day Optimization Activity</h3>
+          {data.recentTrend.length === 0 ? (
+            <p className="text-slate-600 text-xs py-8 text-center">No activity in the last 14 days.</p>
+          ) : (
+            <div className="flex items-end gap-1.5 h-32">
+              {data.recentTrend.map((t, i) => (
+                <div key={i} className="flex-1 flex flex-col items-center gap-1 group relative">
+                  <motion.div initial={{ height: 0 }} animate={{ height: `${(t.count/maxTrendCount)*100}%` }}
+                    className="w-full rounded-t bg-gradient-to-t from-violet-600 to-violet-400 min-h-[4px]"/>
+                  <span className="text-[8px] text-slate-600">{new Date(t.date).getDate()}</span>
+                  <div className="absolute -top-7 opacity-0 group-hover:opacity-100 bg-black/80 text-[9px] text-white px-1.5 py-0.5 rounded transition-opacity whitespace-nowrap">
+                    {t.count} queries · +{t.avg_gain}%
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Issue severity breakdown */}
+        <div className="bg-[#08081a] rounded-2xl border border-violet-500/15 p-5">
+          <h3 className="text-xs font-bold text-violet-400 uppercase tracking-wider mb-4 flex items-center gap-1.5">
+            <AlertTriangle className="w-3.5 h-3.5"/> Issues Detected by Severity
+          </h3>
+          {data.issueTypes.length === 0 ? (
+            <p className="text-slate-600 text-xs py-8 text-center">No issues recorded yet.</p>
+          ) : (
+            <div className="space-y-3">
+              {data.issueTypes.map(it => (
+                <div key={it.severity}>
+                  <div className="flex items-center justify-between text-[11px] mb-1">
+                    <span className={`capitalize ${
+                      it.severity === "critical" ? "text-red-300" : it.severity === "warning" ? "text-amber-300" : "text-blue-300"
+                    }`}>{it.severity}</span>
+                    <span className="text-slate-500">{it.count}</span>
+                  </div>
+                  <div className="h-2 rounded-full bg-slate-800 overflow-hidden">
+                    <div className={`h-full rounded-full ${
+                      it.severity === "critical" ? "bg-red-500" : it.severity === "warning" ? "bg-amber-500" : "bg-blue-500"
+                    }`} style={{ width: `${(it.count / Math.max(1,...data.issueTypes.map(x=>x.count)))*100}%` }}/>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Top performing optimizations */}
+      <div className="bg-[#08081a] rounded-2xl border border-violet-500/15 p-5">
+        <h3 className="text-xs font-bold text-violet-400 uppercase tracking-wider mb-4 flex items-center gap-1.5">
+          <Award className="w-3.5 h-3.5"/> Top Performing Optimizations
+        </h3>
+        {data.topGains.length === 0 ? (
+          <p className="text-slate-600 text-xs py-8 text-center">Optimize your first query to see top performers here.</p>
+        ) : (
+          <div className="space-y-2">
+            {data.topGains.map((g, i) => (
+              <div key={g.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-violet-500/5">
+                <span className="text-[10px] text-slate-600 w-4">#{i+1}</span>
+                <span className="flex-1 text-xs text-slate-300 truncate">{g.title ?? "SQL Query"}</span>
+                <span className="text-[9px] px-1.5 py-0.5 bg-violet-500/15 text-violet-300 rounded-full">{g.domain}</span>
+                <span className="text-xs font-bold text-emerald-400">+{g.performanceGain}%</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

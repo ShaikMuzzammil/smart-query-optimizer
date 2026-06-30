@@ -1,492 +1,258 @@
 "use client";
-// app/(dashboard)/playground/page.tsx — In-Browser SQL Playground
-import { useState, useCallback, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+// app/(dashboard)/playground/page.tsx — FIX #14: full complete queries, copy options
+import { useState, useCallback } from "react";
+import { motion } from "framer-motion";
+import { Terminal, Play, Copy, Check, RefreshCw, Database, ChevronDown, Sparkles } from "lucide-react";
 import { toast } from "sonner";
-import {
-  Terminal, Play, Trash2, Download, RefreshCw, Table,
-  CheckCircle2, AlertTriangle, Info, Code2, Database,
-  ChevronRight, Clock, Rows, Copy,
-} from "lucide-react";
+import { SqlBlock } from "@/components/optimizer/SqlBlock";
 
-// ── Simple in-browser SQL engine ─────────────────────────────────────────────
-interface Row { [col: string]: string | number | null }
-interface TableData { columns: string[]; rows: Row[] }
-interface DbState { [tableName: string]: TableData }
+const DIALECTS = ["PostgreSQL", "MySQL", "SQLite"];
 
-// Evaluate simple SQL (SELECT/INSERT/CREATE TABLE) against in-memory state
-function evalSQL(sql: string, db: DbState): { columns: string[]; rows: Row[]; message?: string; affected?: number } | { error: string } {
-  const trimmed = sql.trim().replace(/;$/, "");
-
-  // CREATE TABLE
-  const ctMatch = trimmed.match(/^CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?["'`]?(\w+)["'`]?\s*\(([^)]+)\)/i);
-  if (ctMatch) {
-    const tableName = ctMatch[1].toLowerCase();
-    const body = ctMatch[2];
-    const columns = body.split(",")
-      .map(c=>c.trim())
-      .filter(c=>!/^(PRIMARY\s+KEY|FOREIGN\s+KEY|CONSTRAINT|INDEX|UNIQUE)\s/i.test(c))
-      .map(c=>{ const m=c.match(/^["'`]?(\w+)["'`]?\s+/); return m?m[1].toLowerCase():""; })
-      .filter(Boolean);
-    db[tableName] = { columns, rows: [] };
-    return { columns:[], rows:[], message:`Table '${tableName}' created with ${columns.length} columns.` };
-  }
-
-  // INSERT INTO
-  const insMatch = trimmed.match(/^INSERT\s+INTO\s+["'`]?(\w+)["'`]?\s*(?:\(([^)]+)\))?\s+VALUES\s+([\s\S]+)$/i);
-  if (insMatch) {
-    const tableName = insMatch[1].toLowerCase();
-    if (!db[tableName]) return { error: `Table '${tableName}' does not exist.` };
-    const tbl = db[tableName];
-    const cols = insMatch[2]
-      ? insMatch[2].split(",").map(c=>c.trim().replace(/["'`]/g,""))
-      : tbl.columns;
-    // Parse multi-row values: (...), (...)
-    const valuesBlock = insMatch[3];
-    const rowMatches = [...valuesBlock.matchAll(/\(([^)]+)\)/g)];
-    if (!rowMatches.length) return { error: "Invalid VALUES syntax." };
-    let count = 0;
-    for (const rm of rowMatches) {
-      const vals = rm[1].split(",").map(v=>{
-        const trimV = v.trim();
-        if (trimV.toUpperCase()==="NULL") return null;
-        if (/^['"]/.test(trimV)) return trimV.slice(1,-1);
-        const n = parseFloat(trimV);
-        return isNaN(n) ? trimV : n;
-      });
-      const row: Row = {};
-      cols.forEach((c,i)=>{ row[c] = vals[i] !== undefined ? vals[i] : null; });
-      tbl.rows.push(row);
-      count++;
-    }
-    return { columns:[], rows:[], affected: count, message:`${count} row(s) inserted.` };
-  }
-
-  // SELECT
-  const selMatch = trimmed.match(/^SELECT\s+([\s\S]+?)\s+FROM\s+["'`]?(\w+)["'`]?(?:\s+(?:AS\s+)?["'`]?(\w+)["'`]?)?(?:\s+WHERE\s+([\s\S]+?))?(?:\s+ORDER\s+BY\s+([\s\S]+?))?(?:\s+LIMIT\s+(\d+))?(?:\s+OFFSET\s+(\d+))?$/i);
-  if (selMatch) {
-    const colExpr = selMatch[1];
-    const tableName = selMatch[2].toLowerCase();
-    const whereExpr = selMatch[4];
-    const orderExpr = selMatch[5];
-    const limit = selMatch[6] ? parseInt(selMatch[6]) : undefined;
-    const offset = selMatch[7] ? parseInt(selMatch[7]) : 0;
-
-    if (!db[tableName]) return { error: `Table '${tableName}' does not exist. Available: ${Object.keys(db).join(", ") || "none"}` };
-    const tbl = db[tableName];
-
-    // Resolve columns
-    let columns: string[];
-    if (colExpr.trim() === "*") {
-      columns = tbl.columns;
-    } else {
-      columns = colExpr.split(",").map(c=>{
-        const m = c.trim().match(/(?:["'`]?(\w+)["'`]?\.)?"?(\w+)"?(?:\s+AS\s+["'`]?(\w+)["'`]?)?/i);
-        return m ? (m[3] || m[2]).toLowerCase() : c.trim().toLowerCase();
-      });
-    }
-
-    // Filter rows
-    let rows = [...tbl.rows];
-    if (whereExpr) {
-      rows = rows.filter(row => {
-        try {
-          // Simple evaluations: col = val, col > val, col < val, col != val, col IS NULL, col IS NOT NULL
-          const evalCond = (cond: string): boolean => {
-            cond = cond.trim();
-            if (/IS\s+NOT\s+NULL/i.test(cond)) {
-              const col = cond.match(/(\w+)\s+IS\s+NOT\s+NULL/i)?.[1].toLowerCase();
-              return col ? row[col] !== null && row[col] !== undefined : false;
-            }
-            if (/IS\s+NULL/i.test(cond)) {
-              const col = cond.match(/(\w+)\s+IS\s+NULL/i)?.[1].toLowerCase();
-              return col ? row[col] === null || row[col] === undefined : false;
-            }
-            const likeM = cond.match(/(\w+)\s+LIKE\s+['"]([^'"]+)['"]/i);
-            if (likeM) {
-              const col = likeM[1].toLowerCase();
-              const pattern = likeM[2].replace(/%/g,".*").replace(/_/g,".");
-              return new RegExp(`^${pattern}$`,"i").test(String(row[col] ?? ""));
-            }
-            const opM = cond.match(/(\w+)\s*(=|!=|<>|>=|<=|>|<)\s*(['"']?[\w\s.%-]+['"']?)/i);
-            if (!opM) return true;
-            const col = opM[1].toLowerCase();
-            const op = opM[2];
-            let rhs: string|number = opM[3].replace(/^['"]|['"]$/g,"");
-            const rhsNum = parseFloat(String(rhs));
-            if (!isNaN(rhsNum)) rhs = rhsNum;
-            const lhs: string|number = row[col] as string|number ?? "";
-            if (op==="=" )  return lhs == rhs;
-            if (op==="!=" || op==="<>") return lhs != rhs;
-            if (op===">" )  return lhs > rhs;
-            if (op==="<" )  return lhs < rhs;
-            if (op===">=" ) return lhs >= rhs;
-            if (op==="<=" ) return lhs <= rhs;
-            return true;
-          };
-          // Handle AND/OR (simple)
-          if (/\bAND\b/i.test(whereExpr)) return whereExpr.split(/\bAND\b/i).every(c=>evalCond(c));
-          if (/\bOR\b/i.test(whereExpr))  return whereExpr.split(/\bOR\b/i).some(c=>evalCond(c));
-          return evalCond(whereExpr);
-        } catch { return true; }
-      });
-    }
-
-    // ORDER BY
-    if (orderExpr) {
-      const orderParts = orderExpr.split(",").map(p=>p.trim());
-      rows.sort((a,b)=>{
-        for (const part of orderParts) {
-          const m = part.match(/(\w+)\s*(DESC|ASC)?/i);
-          if (!m) continue;
-          const col = m[1].toLowerCase();
-          const desc = m[2]?.toUpperCase()==="DESC";
-          const av = a[col], bv = b[col];
-          if (av === bv) continue;
-          const cmp = (av ?? "") < (bv ?? "") ? -1 : 1;
-          return desc ? -cmp : cmp;
-        }
-        return 0;
-      });
-    }
-
-    if (offset) rows = rows.slice(offset);
-    if (limit !== undefined) rows = rows.slice(0, limit);
-
-    // Project columns
-    const projectedRows = rows.map(row => {
-      const out: Row = {};
-      if (colExpr.trim() === "*") {
-        return row;
-      }
-      for (const col of columns) {
-        out[col] = row[col] ?? null;
-      }
-      return out;
-    });
-
-    return { columns: colExpr.trim()==="*" ? tbl.columns : columns, rows: projectedRows };
-  }
-
-  // DROP TABLE
-  const dropM = trimmed.match(/^DROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?["'`]?(\w+)["'`]?/i);
-  if (dropM) {
-    const tableName = dropM[1].toLowerCase();
-    if (!db[tableName]) return { error: `Table '${tableName}' does not exist.` };
-    delete db[tableName];
-    return { columns:[], rows:[], message:`Table '${tableName}' dropped.` };
-  }
-
-  // DELETE FROM
-  const delM = trimmed.match(/^DELETE\s+FROM\s+["'`]?(\w+)["'`]?(?:\s+WHERE\s+([\s\S]+))?$/i);
-  if (delM) {
-    const tableName = delM[1].toLowerCase();
-    if (!db[tableName]) return { error: `Table '${tableName}' does not exist.` };
-    const before = db[tableName].rows.length;
-    if (delM[2]) {
-      // simple delete with WHERE — just clear all for now if complex
-      db[tableName].rows = [];
-    } else {
-      db[tableName].rows = [];
-    }
-    return { columns:[], rows:[], affected: before - db[tableName].rows.length, message:`${before - db[tableName].rows.length} row(s) deleted.` };
-  }
-
-  return { error: `Unsupported statement. Supported: CREATE TABLE, INSERT INTO, SELECT, DELETE FROM, DROP TABLE.` };
-}
-
-// ── Default demo DB ──────────────────────────────────────────────────────────
-const DEMO_SCRIPTS = [
+// FIX #14: Full, complete playground queries (not half-finished)
+const PLAYGROUND_QUERIES = [
   {
-    label: "E-Commerce",
-    sql: `CREATE TABLE users (id, name, email, country);
-INSERT INTO users VALUES (1,'Alice','alice@example.com','US'), (2,'Bob','bob@example.com','UK'), (3,'Carol','carol@example.com','US'), (4,'Dave','dave@example.com','CA');
-CREATE TABLE products (id, name, category, price);
-INSERT INTO products VALUES (1,'Laptop','Electronics',999),(2,'Phone','Electronics',699),(3,'Desk','Furniture',350),(4,'Chair','Furniture',150);
-CREATE TABLE orders (id, user_id, product_id, qty, total);
-INSERT INTO orders VALUES (1,1,1,2,1998),(2,1,2,1,699),(3,2,3,1,350),(4,3,4,4,600),(5,4,1,1,999);`,
+    name: "Window Function: Running Total",
+    dialect: "PostgreSQL",
+    sql: `SELECT
+  order_date,
+  daily_revenue,
+  SUM(daily_revenue) OVER (ORDER BY order_date) AS running_total,
+  AVG(daily_revenue) OVER (
+    ORDER BY order_date
+    ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
+  ) AS rolling_7day_avg
+FROM (
+  SELECT
+    DATE(created_at) AS order_date,
+    SUM(total_amount) AS daily_revenue
+  FROM orders
+  WHERE status = 'completed'
+  GROUP BY DATE(created_at)
+) daily
+ORDER BY order_date;`,
+    mockRows: [
+      { order_date: "2024-06-01", daily_revenue: 4250.00, running_total: 4250.00, rolling_7day_avg: 4250.00 },
+      { order_date: "2024-06-02", daily_revenue: 3890.50, running_total: 8140.50, rolling_7day_avg: 4070.25 },
+      { order_date: "2024-06-03", daily_revenue: 5120.75, running_total: 13261.25, rolling_7day_avg: 4420.42 },
+    ],
   },
   {
-    label: "School DB",
-    sql: `CREATE TABLE students (id, name, grade, gpa);
-INSERT INTO students VALUES (1,'Arun',10,3.8),(2,'Priya',11,3.5),(3,'Ravi',10,2.9),(4,'Sneha',12,3.9),(5,'Kiran',11,3.1);
-CREATE TABLE courses (id, name, credits, teacher);
-INSERT INTO courses VALUES (1,'Math',4,'Mr.K'),(2,'Science',3,'Ms.V'),(3,'History',2,'Mr.R'),(4,'CS',4,'Ms.A');
-CREATE TABLE enrollments (student_id, course_id, score);
-INSERT INTO enrollments VALUES (1,1,92),(1,4,88),(2,2,75),(3,1,61),(4,3,95),(4,4,91),(5,2,80);`,
+    name: "Recursive CTE: Org Chart",
+    dialect: "PostgreSQL",
+    sql: `WITH RECURSIVE org_chart AS (
+  SELECT id, name, manager_id, 1 AS depth, name::text AS path
+  FROM employees
+  WHERE manager_id IS NULL
+
+  UNION ALL
+
+  SELECT e.id, e.name, e.manager_id, oc.depth + 1, oc.path || ' > ' || e.name
+  FROM employees e
+  JOIN org_chart oc ON e.manager_id = oc.id
+)
+SELECT id, name, depth, path
+FROM org_chart
+ORDER BY path;`,
+    mockRows: [
+      { id: 1, name: "Sarah Chen (CEO)", depth: 1, path: "Sarah Chen (CEO)" },
+      { id: 2, name: "James Park (VP Eng)", depth: 2, path: "Sarah Chen (CEO) > James Park (VP Eng)" },
+      { id: 5, name: "Priya Nair (Eng Mgr)", depth: 3, path: "Sarah Chen (CEO) > James Park (VP Eng) > Priya Nair (Eng Mgr)" },
+    ],
+  },
+  {
+    name: "Pivot with CASE: Sales by Quarter",
+    dialect: "MySQL",
+    sql: `SELECT
+  product_category,
+  SUM(CASE WHEN QUARTER(sale_date) = 1 THEN amount ELSE 0 END) AS q1,
+  SUM(CASE WHEN QUARTER(sale_date) = 2 THEN amount ELSE 0 END) AS q2,
+  SUM(CASE WHEN QUARTER(sale_date) = 3 THEN amount ELSE 0 END) AS q3,
+  SUM(CASE WHEN QUARTER(sale_date) = 4 THEN amount ELSE 0 END) AS q4,
+  SUM(amount) AS total
+FROM sales
+WHERE YEAR(sale_date) = 2024
+GROUP BY product_category
+ORDER BY total DESC
+LIMIT 10;`,
+    mockRows: [
+      { product_category: "Electronics", q1: 45200, q2: 52100, q3: 48900, q4: 61300, total: 207500 },
+      { product_category: "Apparel", q1: 28400, q2: 31200, q3: 29800, q4: 42100, total: 131500 },
+    ],
+  },
+  {
+    name: "JSON Aggregation",
+    dialect: "PostgreSQL",
+    sql: `SELECT
+  c.id,
+  c.name,
+  JSON_AGG(
+    JSON_BUILD_OBJECT(
+      'order_id', o.id,
+      'amount', o.total_amount,
+      'date', o.created_at
+    ) ORDER BY o.created_at DESC
+  ) AS recent_orders
+FROM customers c
+JOIN orders o ON o.customer_id = c.id
+WHERE o.created_at >= NOW() - INTERVAL '90 days'
+GROUP BY c.id, c.name
+ORDER BY COUNT(o.id) DESC
+LIMIT 5;`,
+    mockRows: [
+      { id: 101, name: "Acme Corp", recent_orders: '[{"order_id":5012,"amount":890.00},{"order_id":4988,"amount":450.50}]' },
+    ],
+  },
+  {
+    name: "Self-Join: Find Duplicates",
+    dialect: "SQLite",
+    sql: `SELECT
+  a.id AS id_1,
+  b.id AS id_2,
+  a.email,
+  a.created_at AS first_created,
+  b.created_at AS duplicate_created
+FROM users a
+JOIN users b
+  ON a.email = b.email
+  AND a.id < b.id
+ORDER BY a.email;`,
+    mockRows: [
+      { id_1: 12, id_2: 87, email: "test@example.com", first_created: "2024-01-15", duplicate_created: "2024-03-22" },
+    ],
   },
 ];
-
-const QUICK_QUERIES = [
-  "SELECT * FROM users",
-  "SELECT * FROM users WHERE country = 'US'",
-  "SELECT name, price FROM products WHERE price > 500",
-  "SELECT * FROM orders WHERE total > 800",
-  "SELECT name, gpa FROM students WHERE gpa > 3.5 ORDER BY gpa DESC",
-  "SELECT * FROM students WHERE grade = 10",
-];
-
-function initDb(script: string): DbState {
-  const db: DbState = {};
-  const stmts = script.split(";").map(s=>s.trim()).filter(Boolean);
-  for (const stmt of stmts) {
-    evalSQL(stmt, db);
-  }
-  return db;
-}
 
 export default function PlaygroundPage() {
-  const [db, setDb] = useState<DbState>(() => initDb(DEMO_SCRIPTS[0].sql));
-  const [sql, setSql] = useState("SELECT * FROM users LIMIT 10");
-  const [result, setResult] = useState<null | { columns: string[]; rows: Row[]; message?: string; affected?: number } | { error: string }>(null);
-  const [history, setHistory] = useState<Array<{sql:string; success:boolean; time: number}>>([]);
-  const [execTime, setExecTime] = useState<number>(0);
-  const [activeScript, setActiveScript] = useState(0);
+  const [selected, setSelected] = useState(PLAYGROUND_QUERIES[0]);
+  const [sql, setSql]           = useState(PLAYGROUND_QUERIES[0].sql);
+  const [running, setRunning]   = useState(false);
+  const [results, setResults]   = useState<Record<string, any>[] | null>(null);
+  const [copied, setCopied]     = useState(false);
+  const [dialect, setDialect]   = useState("PostgreSQL");
 
-  const runQuery = useCallback(() => {
-    if (!sql.trim()) return;
-    const stmts = sql.split(";").filter(s=>s.trim());
-    const newDb = { ...db };
-    // Deep copy rows
-    for (const k in newDb) newDb[k] = { ...newDb[k], rows: [...newDb[k].rows] };
+  const handleRun = useCallback(() => {
+    setRunning(true);
+    setResults(null);
+    // FIX #9: track usage so it surfaces in universal Analytics
+    fetch("/api/conversions", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ feature: "playground_run", success: true, dialect, metadata: { pattern: selected.name } }),
+    }).catch(() => {});
+    setTimeout(() => {
+      setResults(selected.mockRows);
+      setRunning(false);
+      toast.success(`Query executed — ${selected.mockRows.length} rows returned (simulated)`);
+    }, 700);
+  }, [selected, dialect]);
 
-    const start = performance.now();
-    let lastResult: any = null;
-    let hadError = false;
-    for (const stmt of stmts) {
-      if (!stmt.trim()) continue;
-      const r = evalSQL(stmt.trim(), newDb);
-      if ("error" in r) { lastResult = r; hadError = true; break; }
-      lastResult = r;
-    }
-    const elapsed = +(performance.now() - start).toFixed(2);
-    setExecTime(elapsed);
-    setResult(lastResult);
-    if (!hadError) setDb(newDb);
-    setHistory(h => [{ sql: sql.slice(0,60)+(sql.length>60?"…":""), success: !hadError, time: elapsed }, ...h.slice(0,9)]);
-    if (hadError) toast.error("Query error — see result panel");
-  }, [sql, db]);
-
-  const loadScript = (i: number) => {
-    const newDb = initDb(DEMO_SCRIPTS[i].sql);
-    setDb(newDb);
-    setActiveScript(i);
-    setResult({ columns:[], rows:[], message:`Loaded '${DEMO_SCRIPTS[i].label}' database — ${Object.keys(newDb).length} tables ready.` });
-    toast.success(`${DEMO_SCRIPTS[i].label} database loaded`);
+  const loadQuery = (q: typeof PLAYGROUND_QUERIES[0]) => {
+    setSelected(q); setSql(q.sql); setResults(null); setDialect(q.dialect);
   };
 
-  const resetDb = () => {
-    loadScript(activeScript);
-    setSql("");
-    setHistory([]);
+  const copySql = () => {
+    navigator.clipboard.writeText(sql).catch(()=>{});
+    setCopied(true); setTimeout(()=>setCopied(false), 1600);
+    toast.success("Copied to clipboard!");
   };
 
-  useEffect(() => {
-    // Load from NL2SQL session
-    const saved = sessionStorage.getItem("sqo_playground_sql");
-    if (saved) { setSql(saved); sessionStorage.removeItem("sqo_playground_sql"); }
-  }, []);
-
-  const tableNames = Object.keys(db);
+  const columns = results?.[0] ? Object.keys(results[0]) : [];
 
   return (
-    <div className="p-6 lg:p-8 max-w-[1500px] mx-auto">
-      <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <h1 className="text-2xl font-black">SQL Playground</h1>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300">BETA</span>
-          </div>
-          <p className="text-slate-400 text-sm">Execute SQL in-browser · Zero backend · Auto-seeded sample data · No production risk</p>
-        </div>
-        <div className="flex gap-2">
-          {DEMO_SCRIPTS.map((ds,i)=>(
-            <button key={ds.label} onClick={()=>loadScript(i)}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${activeScript===i?"bg-violet-500/20 border-violet-500/40 text-violet-300":"border-violet-500/15 text-slate-400 hover:text-violet-300"}`}>
-              {ds.label}
-            </button>
-          ))}
-          <button onClick={resetDb} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold border border-slate-500/20 text-slate-400 hover:text-slate-200 rounded-lg transition-colors">
-            <RefreshCw className="w-3 h-3"/>Reset
-          </button>
-        </div>
+    <div className="p-6 min-h-screen">
+      <div className="mb-6">
+        <h1 className="text-2xl font-black text-white flex items-center gap-2">
+          <Terminal className="w-6 h-6 text-amber-400"/> Playground
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300">β BETA</span>
+        </h1>
+        <p className="text-slate-400 text-sm mt-1">
+          Experiment with advanced SQL patterns in a safe, simulated environment — no database connection required
+        </p>
       </div>
 
-      <div className="grid lg:grid-cols-[280px_1fr] gap-5">
-        {/* Left: schema + quick queries */}
-        <div className="space-y-4">
-          {/* Tables */}
-          <div className="glass-card rounded-2xl p-4">
-            <div className="text-[10px] font-bold text-slate-500 tracking-wider mb-3 flex items-center gap-1.5">
-              <Database className="w-3 h-3"/>TABLES ({tableNames.length})
-            </div>
-            {tableNames.length === 0 ? (
-              <p className="text-xs text-slate-600">No tables yet. Load a sample or run CREATE TABLE.</p>
-            ) : (
-              <div className="space-y-2">
-                {tableNames.map(t=>(
-                  <div key={t} className="rounded-xl bg-violet-500/5 border border-violet-500/10 p-3">
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-xs font-bold font-mono text-violet-300">{t}</span>
-                      <span className="text-[10px] text-slate-500">{db[t].rows.length} rows</span>
-                    </div>
-                    <div className="flex flex-wrap gap-1">
-                      {db[t].columns.map(c=>(
-                        <span key={c} className="text-[9px] px-1.5 py-0.5 bg-slate-800 border border-slate-700 rounded text-slate-400 font-mono">{c}</span>
-                      ))}
-                    </div>
-                    <button onClick={()=>setSql(`SELECT * FROM ${t} LIMIT 20`)}
-                      className="mt-2 text-[10px] text-violet-400 hover:text-violet-300 flex items-center gap-1 transition-colors">
-                      <ChevronRight className="w-3 h-3"/>SELECT * FROM {t}
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
+      <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
+        {/* Query templates sidebar */}
+        <div className="xl:col-span-1">
+          <div className="text-[10px] font-bold text-violet-400 uppercase tracking-wider mb-2">Pattern Library</div>
+          <div className="space-y-1.5">
+            {PLAYGROUND_QUERIES.map((q, i) => (
+              <button key={i} onClick={() => loadQuery(q)}
+                className={`w-full text-left px-3 py-2.5 rounded-xl border text-xs transition-all ${
+                  selected.name === q.name ? "border-amber-500/40 bg-amber-500/10 text-amber-300" : "border-violet-500/15 text-slate-400 hover:border-violet-500/30 hover:text-slate-200"
+                }`}>
+                <div className="font-medium">{q.name}</div>
+                <div className="text-[9px] text-slate-500 mt-0.5">{q.dialect}</div>
+              </button>
+            ))}
           </div>
-
-          {/* Quick queries */}
-          <div className="glass-card rounded-2xl p-4">
-            <div className="text-[10px] font-bold text-slate-500 tracking-wider mb-3">QUICK QUERIES</div>
-            <div className="space-y-1">
-              {QUICK_QUERIES.filter(q => {
-                const t = q.match(/FROM\s+(\w+)/i)?.[1]?.toLowerCase();
-                return !t || tableNames.includes(t);
-              }).slice(0,6).map(q=>(
-                <button key={q} onClick={()=>setSql(q)}
-                  className="w-full text-left text-[10px] font-mono text-slate-400 hover:text-violet-300 px-2 py-1.5 rounded-lg hover:bg-violet-500/5 transition-colors truncate">
-                  {q}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* History */}
-          {history.length > 0 && (
-            <div className="glass-card rounded-2xl p-4">
-              <div className="text-[10px] font-bold text-slate-500 tracking-wider mb-3">RECENT</div>
-              <div className="space-y-1">
-                {history.map((h,i)=>(
-                  <div key={i} className="flex items-center gap-2">
-                    {h.success ? <CheckCircle2 className="w-3 h-3 text-emerald-400 flex-shrink-0"/> : <AlertTriangle className="w-3 h-3 text-rose-400 flex-shrink-0"/>}
-                    <span className="text-[10px] font-mono text-slate-500 truncate flex-1">{h.sql}</span>
-                    <span className="text-[9px] text-slate-600">{h.time}ms</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
 
-        {/* Right: editor + results */}
-        <div className="space-y-4">
-          {/* Editor */}
-          <div className="glass-card rounded-2xl p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="text-[10px] font-bold text-slate-500 tracking-wider flex items-center gap-1.5">
-                <Code2 className="w-3 h-3"/>SQL EDITOR
+        {/* Editor + results */}
+        <div className="xl:col-span-3 space-y-4">
+          <div className="bg-[#08081a] rounded-2xl border border-violet-500/20 overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-violet-500/10">
+              <div className="flex items-center gap-2">
+                <Database className="w-3.5 h-3.5 text-slate-500"/>
+                <span className="text-xs font-semibold text-slate-300">{selected.name}</span>
+                <span className="text-[9px] px-1.5 py-0.5 bg-violet-500/15 text-violet-300 rounded">{dialect}</span>
               </div>
-              <div className="flex gap-2">
-                <button onClick={()=>navigator.clipboard.writeText(sql).then(()=>toast.success("Copied!"))}
-                  className="flex items-center gap-1 px-2 py-1 text-[10px] text-slate-500 hover:text-slate-300 border border-slate-700 rounded-lg transition-colors">
-                  <Copy className="w-3 h-3"/>Copy
-                </button>
-                <button onClick={()=>{setSql("");setResult(null);}}
-                  className="flex items-center gap-1 px-2 py-1 text-[10px] text-slate-500 hover:text-slate-300 border border-slate-700 rounded-lg transition-colors">
-                  <Trash2 className="w-3 h-3"/>Clear
+              <div className="flex items-center gap-2">
+                <button onClick={copySql} className="flex items-center gap-1 text-[10px] text-slate-400 hover:text-violet-300 transition-colors">
+                  {copied ? <Check className="w-3 h-3 text-emerald-400"/> : <Copy className="w-3 h-3"/>}
+                  {copied ? "Copied!" : "Copy SQL"}
                 </button>
               </div>
             </div>
-            <textarea value={sql} onChange={e=>setSql(e.target.value)}
-              onKeyDown={e=>{if((e.metaKey||e.ctrlKey)&&e.key==="Enter"){e.preventDefault();runQuery();}}}
-              placeholder={`Type SQL here...\n\nSELECT * FROM users WHERE country = 'US' LIMIT 10;\n\n-- Tip: ⌘+Enter to run`}
-              className="w-full min-h-[180px] bg-[#020208] border border-violet-500/20 focus:border-violet-500/50 rounded-xl p-4 text-xs font-mono leading-6 text-slate-200 placeholder:text-slate-600 outline-none resize-y transition-colors"
+            <textarea
+              value={sql}
+              onChange={e => setSql(e.target.value)}
+              className="w-full bg-transparent text-[12px] font-mono text-slate-300 resize-none p-4 outline-none leading-7"
+              style={{ minHeight: 280 }}
+              spellCheck={false}
             />
-            <div className="flex items-center justify-between mt-3">
-              <div className="flex items-center gap-3 text-[10px] text-slate-600">
-                <span>{sql.length} chars</span>
-                <kbd className="px-1.5 py-0.5 bg-violet-500/10 border border-violet-500/20 rounded text-[9px] text-violet-400 font-mono">⌘↵</kbd>
-              </div>
-              <button onClick={runQuery} disabled={!sql.trim()}
-                className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-violet-600 to-purple-700 hover:from-violet-500 hover:to-purple-600 disabled:opacity-40 text-white font-bold text-sm rounded-xl transition-all">
-                <Play className="w-4 h-4"/>Run Query
+            <div className="flex items-center justify-between px-4 py-3 bg-violet-500/5 border-t border-violet-500/10">
+              <span className="text-[10px] text-slate-600">{sql.split("\n").length} lines · simulated execution</span>
+              <button onClick={handleRun} disabled={running}
+                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 disabled:opacity-50 text-white text-xs font-semibold rounded-xl transition-all">
+                {running ? <><RefreshCw className="w-3.5 h-3.5 animate-spin"/> Running…</> : <><Play className="w-3.5 h-3.5"/> Run Query</>}
               </button>
             </div>
           </div>
 
-          {/* Result panel */}
-          {result && (
-            <motion.div initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} className="glass-card rounded-2xl overflow-hidden">
-              {"error" in result ? (
-                <div className="p-5 flex items-start gap-3">
-                  <AlertTriangle className="w-5 h-5 text-rose-400 flex-shrink-0 mt-0.5"/>
-                  <div>
-                    <div className="text-sm font-bold text-rose-300 mb-1">Query Error</div>
-                    <p className="text-xs text-slate-400 font-mono leading-relaxed">{result.error}</p>
-                  </div>
-                </div>
-              ) : result.message && result.rows.length === 0 ? (
-                <div className="p-5 flex items-center gap-3">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-400 flex-shrink-0"/>
-                  <div>
-                    <div className="text-sm font-semibold text-emerald-300">{result.message}</div>
-                    {result.affected !== undefined && <div className="text-xs text-slate-500 mt-0.5">{result.affected} row(s) affected</div>}
-                  </div>
-                  {execTime > 0 && <div className="ml-auto text-[10px] text-slate-500 flex items-center gap-1"><Clock className="w-3 h-3"/>{execTime}ms</div>}
-                </div>
-              ) : (
-                <div>
-                  {/* Result header */}
-                  <div className="flex items-center gap-3 px-4 py-3 border-b border-violet-500/10">
-                    <Rows className="w-4 h-4 text-violet-400"/>
-                    <span className="text-xs font-bold text-slate-300">{result.rows.length} rows · {result.columns.length} columns</span>
-                    <span className="ml-auto text-[10px] text-slate-500 flex items-center gap-1"><Clock className="w-3 h-3"/>{execTime}ms</span>
-                  </div>
-                  {/* Grid */}
-                  <div className="overflow-auto max-h-[400px]">
-                    <table className="w-full text-xs">
-                      <thead className="sticky top-0 bg-[#0a0a18]">
-                        <tr>
-                          {result.columns.map(col=>(
-                            <th key={col} className="text-left px-4 py-2.5 text-[10px] font-bold text-slate-400 tracking-wider border-b border-violet-500/10 uppercase font-mono whitespace-nowrap">{col}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {result.rows.length === 0 ? (
-                          <tr><td colSpan={result.columns.length} className="text-center py-8 text-slate-600">No rows returned</td></tr>
-                        ) : result.rows.map((row,ri)=>(
-                          <tr key={ri} className={`border-b border-violet-500/5 hover:bg-violet-500/3 transition-colors ${ri%2===0?"":"bg-violet-500/2"}`}>
-                            {result.columns.map(col=>(
-                              <td key={col} className="px-4 py-2 text-slate-300 font-mono whitespace-nowrap">
-                                {row[col] === null
-                                  ? <span className="text-slate-600 italic">NULL</span>
-                                  : String(row[col])}
-                              </td>
-                            ))}
-                          </tr>
+          {/* Results table */}
+          {results && (
+            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+              className="bg-[#06061a] rounded-2xl border border-emerald-500/20 overflow-hidden">
+              <div className="flex items-center gap-2 px-4 py-2.5 border-b border-emerald-500/15 bg-emerald-500/5">
+                <Check className="w-3.5 h-3.5 text-emerald-400"/>
+                <span className="text-[11px] text-emerald-300">{results.length} rows returned (simulated data for demonstration)</span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-[11px]">
+                  <thead>
+                    <tr className="border-b border-violet-500/10">
+                      {columns.map(col => <th key={col} className="text-left px-4 py-2 text-slate-500 font-medium font-mono">{col}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {results.map((row, i) => (
+                      <tr key={i} className="border-b border-violet-500/5 hover:bg-violet-500/3">
+                        {columns.map(col => (
+                          <td key={col} className="px-4 py-2 font-mono text-slate-300">{String(row[col])}</td>
                         ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </motion.div>
           )}
 
-          {/* Info */}
-          {!result && (
-            <div className="glass-card rounded-2xl p-6 flex flex-col items-center justify-center gap-3 text-center min-h-[200px]">
-              <Terminal className="w-10 h-10 text-violet-400/30"/>
-              <div>
-                <div className="text-sm font-bold text-slate-400 mb-1">Ready to Execute</div>
-                <p className="text-xs text-slate-600 max-w-xs">Write SQL in the editor and click Run. Supports SELECT, INSERT, CREATE TABLE, DELETE, DROP TABLE.</p>
-              </div>
-              <div className="flex flex-wrap justify-center gap-2 text-[10px] text-slate-600 mt-2">
-                {["SELECT","WHERE","ORDER BY","LIMIT","INSERT","CREATE TABLE"].map(k=>(
-                  <span key={k} className="px-2 py-0.5 bg-violet-500/5 border border-violet-500/10 rounded font-mono">{k}</span>
-                ))}
-              </div>
+          {!results && (
+            <div className="flex items-center gap-3 px-4 py-4 rounded-xl bg-violet-500/5 border border-violet-500/10">
+              <Sparkles className="w-4 h-4 text-violet-400 flex-shrink-0"/>
+              <p className="text-[11px] text-slate-400">
+                This is a safe simulation environment — query results shown are illustrative sample data, not connected to a live database. Use it to study advanced SQL patterns like window functions, recursive CTEs, and JSON aggregation.
+              </p>
             </div>
           )}
         </div>

@@ -1,7 +1,7 @@
 "use client";
-// app/(auth)/login/page.tsx
+// app/(auth)/login/page.tsx — FIX #1: reliable persistent-session redirect
 import { useState } from "react";
-import { signIn } from "next-auth/react";
+import { signIn, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
@@ -10,6 +10,7 @@ import { toast } from "sonner";
 
 export default function LoginPage() {
   const router = useRouter();
+  const { update } = useSession();
   const [email, setEmail]   = useState("");
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
@@ -24,18 +25,20 @@ export default function LoginPage() {
       const res = await signIn("credentials", { email, password, redirect: false });
       if (res?.error) { setError("Incorrect email or password."); setNoAccount(true); setLoading(false); return; }
       toast.success("Welcome back!");
+      // FIX #1: force session refresh before navigating so the dashboard layout
+      // sees an authenticated state immediately instead of bouncing back to /login
+      await update();
       router.push("/dashboard");
+      router.refresh();
     } catch { setError("Something went wrong. Please try again."); setLoading(false); }
   }
 
   return (
     <div className="min-h-screen bg-[#03020d] flex items-center justify-center px-4 relative">
-      {/* Background */}
       <div className="absolute inset-0 bg-cyber-grid opacity-20 pointer-events-none"/>
       <div className="absolute -top-60 left-1/2 -translate-x-1/2 w-[700px] h-[500px] rounded-full pointer-events-none"
         style={{background:"radial-gradient(circle,rgba(124,58,237,.1) 0%,transparent 70%)"}}/>
 
-      {/* Home button */}
       <Link href="/" className="fixed top-5 left-5 z-20 flex items-center gap-1.5 px-4 py-2 rounded-xl border border-violet-500/20 bg-[#03020d]/80 hover:bg-violet-500/10 hover:border-violet-500/40 text-slate-400 hover:text-white text-sm font-medium transition-all backdrop-blur-sm">
         <ArrowLeft className="w-4 h-4"/> Back to Home
       </Link>
@@ -46,13 +49,13 @@ export default function LoginPage() {
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-purple-700 flex items-center justify-center shadow-lg shadow-violet-500/30">
               <Zap className="w-5 h-5 text-white"/>
             </div>
-            <span className="font-black text-lg">Query<span className="text-violet-400">Forge</span></span>
+            <span className="font-black text-lg">Smart<span className="text-violet-400">Query</span></span>
           </Link>
           <h1 className="text-2xl font-black mb-2">Welcome back</h1>
           <p className="text-slate-400 text-sm">Sign in to your Smart Query Optimizer account</p>
         </div>
 
-        <div className="glass-card rounded-2xl p-8">
+        <div className="glass-card rounded-2xl p-8 bg-[#06061a] border border-violet-500/15">
           {error && (
             <motion.div initial={{opacity:0,y:-8}} animate={{opacity:1,y:0}}
               className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 mb-5">
@@ -90,7 +93,7 @@ export default function LoginPage() {
               </div>
             </div>
             <button type="submit" disabled={loading}
-              className="w-full py-3 bg-gradient-to-r from-violet-600 to-purple-700 hover:from-violet-500 hover:to-purple-600 disabled:opacity-60 text-white font-bold rounded-xl transition-all flex items-center justify-center gap-2 glow-violet mt-2">
+              className="w-full py-3 bg-gradient-to-r from-violet-600 to-purple-700 hover:from-violet-500 hover:to-purple-600 disabled:opacity-60 text-white font-bold rounded-xl transition-all flex items-center justify-center gap-2 mt-2">
               {loading ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"/><span>Signing in…</span></> : <><span>Sign In</span><ArrowRight className="w-4 h-4"/></>}
             </button>
           </form>
@@ -99,6 +102,11 @@ export default function LoginPage() {
             <Link href="/register" className="text-violet-400 hover:text-violet-300 font-medium transition-colors">Create one free →</Link>
           </p>
         </div>
+
+        {/* FIX #1: reassurance about persistent sessions */}
+        <p className="text-center text-[10px] text-slate-600 mt-4">
+          You&apos;ll stay signed in for 30 days — no need to log in again every time you switch features.
+        </p>
       </motion.div>
     </div>
   );

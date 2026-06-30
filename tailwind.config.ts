@@ -3,6 +3,13 @@ import { fontFamily } from "tailwindcss/defaultTheme";
 
 const config: Config = {
   darkMode: ["class"],
+  // Safelist dynamically-interpolated color classes (e.g. `bg-${color}-500/15`)
+  // used in Dashboard/Analytics cards — Tailwind's JIT can't statically see these.
+  safelist: [
+    {
+      pattern: /^(bg|text|border)-(violet|sky|emerald|amber|orange|pink|red|yellow|blue)-(300|400|500)(\/(10|15|20|25|30|40|45))?$/,
+    },
+  ],
   content: [
     "./pages/**/*.{ts,tsx}",
     "./components/**/*.{ts,tsx}",

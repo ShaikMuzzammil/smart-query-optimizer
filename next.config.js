@@ -1,17 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  experimental: {
-    serverExternalPackages: ["@prisma/client", "bcryptjs"],
-  },
-  images: {
-    remotePatterns: [
-      { protocol: "https", hostname: "avatars.githubusercontent.com" },
-      { protocol: "https", hostname: "lh3.googleusercontent.com" },
-    ],
-  },
-  poweredByHeader: false,
-  compress: true,
-  reactStrictMode: true,
+  experimental: { serverComponentsExternalPackages: ["@prisma/client", "prisma"] },
+  images: { domains: ["lh3.googleusercontent.com", "avatars.githubusercontent.com"] },
+  optimizeFonts: false,
 };
-
 module.exports = nextConfig;

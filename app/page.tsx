@@ -53,10 +53,10 @@ const FEATURES = [
   {
     icon: <BookOpen className="w-6 h-6" />,
     title: "Example Library",
-    desc: "99 curated, real-world SQL examples across 12 industry domains. Each example is annotated with the anti-patterns it demonstrates and what the optimized version achieves.",
+    desc: "25 curated, real-world SQL examples across 9 industry domains. Each example is annotated with the anti-patterns it demonstrates and what the optimized version achieves.",
     color: "pink",
     href: "/examples",
-    bullets: ["99 queries, 12 domains","Before/After comparisons","Copy, run, or optimize any example","Covers E-Commerce, Healthcare, Finance, HR and more"],
+    bullets: ["25 queries, 9 domains","Difficulty-rated (Beginner → Advanced)","Copy, run, or optimize any example","Covers E-Commerce, Healthcare, Finance, HR and more"],
   },
   {
     icon: <BarChart3 className="w-6 h-6" />,
@@ -114,14 +114,11 @@ const DOMAINS = [
   { name: "Healthcare",      icon: "🏥", eg: "Patients with abnormal lab tests" },
   { name: "Finance",         icon: "💰", eg: "Monthly revenue per category"     },
   { name: "HR & Payroll",    icon: "👥", eg: "Employees with no review in 6 months" },
-  { name: "SaaS / Analytics",icon: "📊", eg: "Daily active users with rolling average" },
+  { name: "SaaS",            icon: "📊", eg: "Daily active users with rolling average" },
   { name: "Logistics",       icon: "🚚", eg: "Delayed shipments with carrier info" },
   { name: "Education",       icon: "🎓", eg: "Students with enrollment counts"  },
   { name: "Gaming",          icon: "🎮", eg: "Leaderboard by score this month"  },
   { name: "Banking",         icon: "🏦", eg: "High-value transactions by region" },
-  { name: "Marketing",       icon: "📣", eg: "Campaign conversion funnels"      },
-  { name: "Real Estate",     icon: "🏠", eg: "Average listing price by city"    },
-  { name: "Travel",          icon: "✈️", eg: "Booking trends by route"          },
 ];
 
 const FAQS = [
@@ -160,8 +157,8 @@ const FAQS = [
 ];
 
 const STATS = [
-  { value: "12",     label: "Industry Domains"     },
-  { value: "99",     label: "Example Queries"      },
+  { value: "9",      label: "Industry Domains"     },
+  { value: "25",     label: "Example Queries"      },
   { value: "5",      label: "SQL Dialects"          },
   { value: "O(n²)→O(n log n)", label: "Complexity Reduction" },
 ];
@@ -250,7 +247,7 @@ export default function LandingPage() {
               Smart Query<br /><span className="text-violet-400">Optimizer</span>
             </h1>
             <p className="text-slate-400 text-base sm:text-lg max-w-2xl mx-auto mb-4 leading-relaxed">
-              SQL Intelligence Platform · 12 Industry Domains
+              SQL Intelligence Platform · 9 Industry Domains
             </p>
             <p className="text-slate-300 text-sm sm:text-base max-w-xl mx-auto mb-8 leading-relaxed">
               Paste broken SQL. Get production-grade rewrites with full analysis — anti-pattern detection,
@@ -410,7 +407,7 @@ ORDER BY revenue DESC LIMIT 100`}
         {/* Domains */}
         <section id="domains" className="px-6 lg:px-16 py-20 bg-violet-500/5 border-y border-violet-500/10">
           <div className="text-center mb-12">
-            <h2 className="text-3xl font-black mb-3">12 Industry Domains</h2>
+            <h2 className="text-3xl font-black mb-3">9 Industry Domains</h2>
             <p className="text-slate-400 text-sm max-w-xl mx-auto">SmartQuery detects your domain automatically and uses domain-specific optimization strategies</p>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 max-w-4xl mx-auto">

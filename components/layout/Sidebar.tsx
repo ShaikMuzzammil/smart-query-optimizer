@@ -6,19 +6,19 @@ import { signOut, useSession } from "next-auth/react";
 import { motion } from "framer-motion";
 import {
   LayoutDashboard, Zap, History, BarChart3, Settings, LogOut, BookOpen,
-  Brain, Database, Terminal, Home, FlaskConical,
+  Brain, Database, Terminal, Home, ChevronRight,
 } from "lucide-react";
 
 const NAV = [
-  { href: "/dashboard",   icon: LayoutDashboard, label: "Dashboard",    badge: null },
-  { href: "/optimizer",   icon: Zap,             label: "SQL Optimizer", badge: null },
-  { href: "/nl2sql",      icon: Brain,           label: "NL to SQL",    badge: "NEW" },
-  { href: "/schema",      icon: Database,        label: "Schema Vault", badge: "NEW" },
-  { href: "/playground",  icon: Terminal,        label: "Playground",   badge: "β" },
-  { href: "/examples",    icon: BookOpen,        label: "Examples",     badge: "99" },
-  { href: "/history",     icon: History,         label: "History",      badge: null },
-  { href: "/analytics",   icon: BarChart3,       label: "Analytics",    badge: null },
-  { href: "/settings",    icon: Settings,        label: "Settings",     badge: null },
+  { href: "/dashboard",  icon: LayoutDashboard, label: "Dashboard",    badge: null },
+  { href: "/optimizer",  icon: Zap,             label: "SQL Optimizer", badge: null },
+  { href: "/nl2sql",     icon: Brain,           label: "NL to SQL",    badge: "NEW" },
+  { href: "/schema",     icon: Database,        label: "Schema Vault", badge: "NEW" },
+  { href: "/playground", icon: Terminal,        label: "Playground",   badge: "β" },
+  { href: "/examples",   icon: BookOpen,        label: "Examples",     badge: "25" },
+  { href: "/history",    icon: History,         label: "History",      badge: null },
+  { href: "/analytics",  icon: BarChart3,       label: "Analytics",    badge: null },
+  { href: "/settings",   icon: Settings,        label: "Settings",     badge: null },
 ];
 
 export function Sidebar() {
@@ -38,18 +38,20 @@ export function Sidebar() {
         </div>
       </div>
 
-      {/* Home link */}
+      {/* Back to Home button — FIX #10: prominently shown */}
       <div className="px-3 pt-3 pb-1">
         <Link href="/"
-          className="flex items-center gap-2 px-3 py-2 text-xs text-slate-500 hover:text-slate-300 hover:bg-violet-500/5 rounded-xl transition-colors">
-          <Home className="w-3.5 h-3.5"/>Back to Home
+          className="flex items-center gap-2 px-3 py-2 text-xs text-slate-400 hover:text-violet-300 hover:bg-violet-500/8 rounded-xl transition-colors border border-violet-500/10 hover:border-violet-500/25">
+          <Home className="w-3.5 h-3.5"/>
+          <span className="flex-1">Back to Home</span>
+          <ChevronRight className="w-3 h-3 opacity-50"/>
         </Link>
       </div>
 
       {/* Nav */}
       <nav className="flex-1 px-3 py-2 space-y-0.5 overflow-y-auto">
         {NAV.map(item => {
-          const active = pathname === item.href;
+          const active = pathname === item.href || pathname.startsWith(item.href + "/");
           const Icon = item.icon;
           return (
             <Link key={item.href} href={item.href} className="relative block">
@@ -80,26 +82,33 @@ export function Sidebar() {
       {/* Quick optimize CTA */}
       <div className="px-3 pb-3">
         <Link href="/optimizer"
-          className="flex items-center justify-center gap-2 py-2.5 bg-gradient-to-r from-violet-600 to-purple-700 hover:from-violet-500 hover:to-purple-600 text-white text-xs font-semibold rounded-xl transition-all glow-violet shadow-lg shadow-violet-500/20">
-          <Zap className="w-3.5 h-3.5"/> New Optimization
+          className="flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-purple-700 hover:from-violet-500 hover:to-purple-600 text-white text-xs font-semibold transition-all shadow-lg shadow-violet-500/20">
+          <Zap className="w-3.5 h-3.5"/>
+          New Optimization
         </Link>
       </div>
 
       {/* User */}
-      <div className="px-3 py-4 border-t border-violet-500/15">
-        <div className="flex items-center gap-2.5 px-2 mb-2">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-emerald-500 flex items-center justify-center text-xs font-bold text-white flex-shrink-0">
-            {session?.user?.name?.[0]?.toUpperCase() ?? session?.user?.email?.[0]?.toUpperCase() ?? "U"}
+      <div className="border-t border-violet-500/15 p-3">
+        <div className="flex items-center gap-2.5 px-2 py-1.5">
+          <div className="w-7 h-7 rounded-full bg-violet-500/20 border border-violet-500/30 flex items-center justify-center flex-shrink-0">
+            <span className="text-[11px] font-bold text-violet-300 uppercase">
+              {session?.user?.name?.[0] ?? session?.user?.email?.[0] ?? "U"}
+            </span>
           </div>
-          <div className="min-w-0 flex-1">
-            <div className="text-xs font-medium text-slate-200 truncate">{session?.user?.name ?? "User"}</div>
-            <div className="text-[10px] text-slate-500 truncate">{session?.user?.email}</div>
+          <div className="flex-1 min-w-0">
+            <div className="text-[11px] font-semibold text-slate-200 truncate">
+              {session?.user?.name ?? "User"}
+            </div>
+            <div className="text-[9px] text-slate-500 truncate">{session?.user?.email}</div>
           </div>
+          <button
+            onClick={() => signOut({ callbackUrl: "/" })}
+            className="p-1.5 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+            title="Sign out">
+            <LogOut className="w-3.5 h-3.5"/>
+          </button>
         </div>
-        <button onClick={() => signOut({ callbackUrl: "/" })}
-          className="w-full flex items-center gap-2 px-2 py-2 text-xs text-slate-500 hover:text-rose-400 transition-colors rounded-lg hover:bg-rose-500/5">
-          <LogOut className="w-3.5 h-3.5"/> Sign out
-        </button>
       </div>
     </aside>
   );

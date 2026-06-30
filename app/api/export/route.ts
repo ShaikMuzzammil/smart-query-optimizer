@@ -12,6 +12,58 @@ const schema = z.object({
   features: z.array(z.enum(["optimizer", "nl2sql"])).min(1),
 });
 
+// GET — quick single-result export (used by inline Export buttons on Optimizer/NL2SQL results)
+export async function GET(req: Request) {
+  try {
+    const session = await getAuth();
+    if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const { searchParams } = new URL(req.url);
+    const format = searchParams.get("format") ?? "sql";
+
+    const latest = await db.query.findFirst({
+      where: { userId: session.user.id },
+      orderBy: { createdAt: "desc" },
+    });
+    if (!latest) return NextResponse.json({ error: "No result to export yet." }, { status: 404 });
+
+    if (format === "json") {
+      return new NextResponse(JSON.stringify(latest, null, 2), {
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+      });
+    }
+    if (format === "csv") {
+      const rows = [
+        "title,domain,performance_gain,tables,created_at",
+        [
+          `"${(latest.title ?? "").replace(/"/g, '""')}"`,
+          latest.domain ?? "",
+          latest.performanceGain,
+          `"${Array.isArray(latest.tablesDetected) ? latest.tablesDetected.join(";") : ""}"`,
+          latest.createdAt.toISOString(),
+        ].join(","),
+      ];
+      return new NextResponse(rows.join("\n"), { headers: { "Content-Type": "text/csv; charset=utf-8" } });
+    }
+    if (format === "pdf") {
+      const text = [
+        "SMARTQUERY OPTIMIZATION REPORT", "==============================", "",
+        `Title:   ${latest.title ?? "—"}`,
+        `Domain:  ${latest.domain ?? "—"}`,
+        `Gain:    +${latest.performanceGain}%`,
+        `Date:    ${latest.createdAt.toLocaleString()}`,
+        "", "OPTIMIZED QUERY", "---------------", latest.optimizedQuery ?? "",
+      ].join("\n");
+      return new NextResponse(text, { headers: { "Content-Type": "text/plain; charset=utf-8" } });
+    }
+    // default sql
+    return new NextResponse(latest.optimizedQuery ?? "", { headers: { "Content-Type": "text/plain; charset=utf-8" } });
+  } catch (err) {
+    console.error("[EXPORT GET]", err);
+    return NextResponse.json({ error: "Export failed" }, { status: 500 });
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const session = await getAuth();
@@ -76,7 +128,7 @@ export async function POST(req: Request) {
       ];
       if (queries.length > 0) {
         lines.push("-- === SQL OPTIMIZER ===", "");
-        queries.forEach((q, i) => {
+        queries.forEach((q: any, i: number) => {
           lines.push(`-- ${i + 1}. ${q.title ?? "Query"} | ${q.domain} | +${q.performanceGain}% | ${q.createdAt.toISOString()}`);
           lines.push(q.optimizedQuery);
           lines.push("");
@@ -84,7 +136,7 @@ export async function POST(req: Request) {
       }
       if (conversions.length > 0) {
         lines.push("-- === NATURAL LANGUAGE TO SQL ===", "");
-        conversions.forEach((c, i) => {
+        conversions.forEach((c: any, i: number) => {
           const meta = c.metadata as any;
           lines.push(`-- ${i + 1}. ${c.inputText?.slice(0, 80) ?? "Conversion"} | ${c.dialect ?? "SQL"} | ${c.createdAt.toISOString()}`);
           if (c.outputText) lines.push(c.outputText);
@@ -101,7 +153,7 @@ export async function POST(req: Request) {
       const rows: string[] = [
         "type,id,title_or_prompt,domain,dialect,performance_gain,issues_count,tables,created_at"
       ];
-      queries.forEach((q) => rows.push(
+      queries.forEach((q: any) => rows.push(
         [
           "optimizer",
           q.id,
@@ -114,7 +166,7 @@ export async function POST(req: Request) {
           q.createdAt.toISOString(),
         ].join(",")
       ));
-      conversions.forEach((c) => rows.push(
+      conversions.forEach((c: any) => rows.push(
         [
           "nl2sql",
           c.id,
@@ -139,7 +191,7 @@ export async function POST(req: Request) {
         scope,
         features,
         summary: { optimizer: queries.length, nl2sql: conversions.length },
-        optimizer: queries.map((q) => ({
+        optimizer: queries.map((q: any) => ({
           id: q.id, title: q.title, domain: q.domain, queryType: q.queryType,
           performanceGain: q.performanceGain, costScore: q.costScore,
           issues: q.issues, improvements: q.improvements, indexRecs: q.indexRecs,
@@ -148,7 +200,7 @@ export async function POST(req: Request) {
           engine: q.engine, optimizedQuery: q.optimizedQuery, explanation: q.explanation,
           createdAt: q.createdAt,
         })),
-        nl2sql: conversions.map((c) => ({
+        nl2sql: conversions.map((c: any) => ({
           id: c.id, prompt: c.inputText, sql: c.outputText,
           dialect: c.dialect, metadata: c.metadata, createdAt: c.createdAt,
         })),
@@ -175,7 +227,7 @@ export async function POST(req: Request) {
       ];
       if (queries.length > 0) {
         lines.push("SQL OPTIMIZER HISTORY", "---------------------", "");
-        queries.forEach((q, i) => {
+        queries.forEach((q: any, i: number) => {
           lines.push(
             `${i + 1}. ${q.title ?? "SQL Query"}`,
             `   Domain:    ${q.domain ?? "—"}`,
@@ -189,7 +241,7 @@ export async function POST(req: Request) {
       }
       if (conversions.length > 0) {
         lines.push("NATURAL LANGUAGE TO SQL", "-----------------------", "");
-        conversions.forEach((c, i) => {
+        conversions.forEach((c: any, i: number) => {
           lines.push(
             `${i + 1}. ${(c.inputText ?? "").slice(0, 100)}`,
             `   Dialect: ${c.dialect ?? "SQL"}`,
