@@ -92,6 +92,12 @@ export default function OptimizerPage() {
   // FIX #6: Abbreviations expanded
   const selectedDialect = DIALECTS.find(d => d.key === dialect)!;
   const liveIssues = sql.length > 5 ? staticAnalyze(sql) : [];
+  // FIX (this round): lightweight shape check — if what's pasted doesn't
+  // look like a SQL statement at all, surface a clear notification with a
+  // quick fix instead of letting the user submit it and wait for a vague
+  // failure from the optimization service.
+  const looksLikeSql = /\b(SELECT|INSERT|UPDATE|DELETE|WITH|CREATE|MERGE|ALTER)\b/i.test(sql);
+  const showShapeWarning = sql.trim().length > 8 && !looksLikeSql;
 
   const handleOptimize = useCallback(async () => {
     if (!sql.trim()) { toast.error("Paste a SQL query first."); return; }
@@ -264,10 +270,27 @@ export default function OptimizerPage() {
             </div>
           </div>
 
+          {/* Shape warning — displayed immediately when input doesn't look like SQL */}
+          {showShapeWarning && (
+            <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }}
+              className="flex items-start gap-3 px-4 py-3 rounded-xl border border-amber-500/30 bg-amber-500/8">
+              <AlertCircle className="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0"/>
+              <div className="flex-1">
+                <div className="text-xs font-semibold text-amber-300">That doesn&apos;t look like a SQL query</div>
+                <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
+                  The optimizer expects a SQL statement (SELECT, INSERT, UPDATE, DELETE, WITH, CREATE, ALTER, or MERGE). Double-check what you pasted, or pick a sample below.
+                </p>
+              </div>
+              <button onClick={() => setSql("")} className="text-slate-500 hover:text-amber-300 transition-colors flex-shrink-0">
+                <X className="w-3.5 h-3.5"/>
+              </button>
+            </motion.div>
+          )}
+
           {/* Optimize button */}
-          <button onClick={handleOptimize} disabled={loading || !sql.trim()}
+          <button onClick={handleOptimize} disabled={loading || !sql.trim() || showShapeWarning}
             className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl bg-gradient-to-r from-violet-600 to-purple-700 hover:from-violet-500 hover:to-purple-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold text-sm transition-all shadow-lg shadow-violet-500/20">
-            {loading ? <><RefreshCw className="w-4 h-4 animate-spin"/> Analyzing…</> : <><Zap className="w-4 h-4"/> Optimize with AI</>}
+            {loading ? <><RefreshCw className="w-4 h-4 animate-spin"/> Analyzing…</> : <><Zap className="w-4 h-4"/> Optimize</>}
           </button>
 
           {/* Live Scanner */}

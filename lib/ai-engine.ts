@@ -1,5 +1,9 @@
 // lib/ai-engine.ts — SmartQuery AI Engine (Gemini-powered, name never exposed)
 // FIX #2 & #12: Use GEMINI_API_KEY, correct model names, no AI name in errors
+// UPDATED: the previous 5-model chain (gemini-1.5-pro/flash/flash-8b, gemini-pro,
+// gemini-1.0-pro) was the actual root cause of every "Optimization/Conversion
+// Unavailable" error — Google shut all of those model IDs down (404 on every
+// call). Chain below uses only currently-live, stable model IDs.
 
 export class AiUnavailableError extends Error {
   constructor(msg = "AI service temporarily unavailable") { super(msg); }
@@ -8,13 +12,16 @@ export class AiParseError extends Error {
   constructor(msg = "AI returned unexpected format") { super(msg); }
 }
 
-// 5-model fallback chain — exact model IDs that Google Gemini API accepts
+// 5-model fallback chain — current, live Gemini model IDs (verified against
+// the Gemini API model list). "gemini-flash-latest" is a Google-managed alias
+// that auto-points at the newest stable Flash release, so this chain stays
+// correct even as Google ships new model generations.
 const GEMINI_MODELS = [
-  "gemini-1.5-pro",
-  "gemini-1.5-flash",
-  "gemini-1.5-flash-8b",
-  "gemini-pro",
-  "gemini-1.0-pro",
+  "gemini-flash-latest",   // alias → always-current stable Flash model
+  "gemini-2.5-flash",      // best price/performance, stable
+  "gemini-3.5-flash",      // most capable for sustained agentic/coding tasks
+  "gemini-2.5-pro",        // deep reasoning fallback for complex queries
+  "gemini-2.5-flash-lite", // fastest, cheapest — last-resort fallback
 ] as const;
 
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";

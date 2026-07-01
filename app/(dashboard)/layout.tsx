@@ -4,6 +4,7 @@ import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { Sidebar } from "@/components/layout/Sidebar";
+import { SmartTips } from "@/components/layout/SmartTips";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { status } = useSession();
@@ -39,6 +40,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <main className="flex-1 overflow-y-auto">
         {children}
       </main>
+      <SmartTips />
     </div>
   );
 }

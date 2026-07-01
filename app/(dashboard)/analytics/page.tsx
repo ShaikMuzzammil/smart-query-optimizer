@@ -37,7 +37,29 @@ function StatCard({ icon: Icon, label, value, sub, color }: any) {
 }
 
 export default function AnalyticsPage() {
-  const { data, isLoading } = useSWR<AnalyticsData>("/api/analytics", fetcher, { refreshInterval: 30000 });
+  const { data, error, isLoading, mutate } = useSWR<AnalyticsData>("/api/analytics", fetcher, {
+    refreshInterval: 30000,
+    errorRetryCount: 3,
+  });
+
+  if (error && !data) {
+    return (
+      <div className="p-6 min-h-screen flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4 text-center max-w-sm">
+          <div className="w-14 h-14 rounded-full bg-amber-500/10 border border-amber-500/25 flex items-center justify-center">
+            <AlertTriangle className="w-7 h-7 text-amber-400"/>
+          </div>
+          <div>
+            <h3 className="font-bold text-amber-300 mb-1">Analytics Unavailable</h3>
+            <p className="text-[12px] text-slate-400">Couldn&apos;t load your activity data. This usually resolves itself — try again in a moment.</p>
+          </div>
+          <button onClick={() => mutate()} className="flex items-center gap-2 px-5 py-2.5 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-sm font-medium transition-colors">
+            <Activity className="w-4 h-4"/> Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (isLoading || !data) {
     return (

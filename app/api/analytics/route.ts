@@ -59,20 +59,27 @@ export async function GET() {
       db.conversion.count({ where: { userId } }),
     ]);
 
-    // Streak calculation
+    // Streak calculation — single query instead of 30 days × 2 sequential
+    // round-trips. The old loop made up to 60 sequential DB calls awaited one
+    // at a time, which could exceed serverless function time limits on
+    // Vercel and cause the whole /api/analytics call to fail/time out —
+    // exactly the cause of Analytics getting stuck on "Loading…" forever.
+    const activeDays = await db.$queryRaw<Array<{ day: string }>>`
+      SELECT DATE(created_at)::text AS day FROM queries
+      WHERE user_id = ${userId} AND created_at >= NOW() - INTERVAL '31 days'
+      UNION
+      SELECT DATE(created_at)::text AS day FROM conversions
+      WHERE user_id = ${userId} AND created_at >= NOW() - INTERVAL '31 days'
+    `;
+    const activeDaySet = new Set(activeDays.map((d: { day: string }) => d.day));
+    let streak = 0;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    let streak = 0;
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < 31; i++) {
       const day = new Date(today);
       day.setDate(today.getDate() - i);
-      const next = new Date(day);
-      next.setDate(day.getDate() + 1);
-      const [qCount, cCount] = await Promise.all([
-        db.query.count({ where: { userId, createdAt: { gte: day, lt: next } } }),
-        db.conversion.count({ where: { userId, createdAt: { gte: day, lt: next } } }),
-      ]);
-      if (qCount + cCount > 0) streak++;
+      const key = day.toISOString().slice(0, 10);
+      if (activeDaySet.has(key)) streak++;
       else if (i > 0) break;
     }
 

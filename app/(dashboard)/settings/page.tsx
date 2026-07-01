@@ -28,7 +28,8 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="p-6 min-h-screen max-w-3xl">
+    <div className="p-6 lg:p-10 min-h-screen">
+      <div className="max-w-3xl mx-auto">
       <div className="mb-6">
         <h1 className="text-2xl font-black text-white flex items-center gap-2">
           <SettingsIcon className="w-6 h-6 text-violet-400"/> Settings
@@ -172,6 +173,7 @@ export default function SettingsPage() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

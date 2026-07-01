@@ -169,6 +169,7 @@ const FEAT_COLOR: Record<string, string> = {
   emerald: "bg-emerald-500/15 text-emerald-400 border-emerald-500/25",
   amber:   "bg-amber-500/15 text-amber-400 border-amber-500/25",
   pink:    "bg-pink-500/15 text-pink-400 border-pink-500/25",
+  rose:    "bg-rose-500/15 text-rose-400 border-rose-500/25",
 };
 
 function FaqItem({ q, a }: { q: string; a: string }) {
@@ -198,12 +199,12 @@ export default function LandingPage() {
       {/* Navbar */}
       <nav className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-6 lg:px-16 h-16 bg-[#030308]/90 backdrop-blur border-b border-violet-500/10">
         <Link href="/" className="flex items-center gap-2.5 group">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-600 to-violet-800 flex items-center justify-center">
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-600 to-violet-800 flex items-center justify-center shadow-lg shadow-violet-900/40">
             <Zap className="w-4 h-4 text-white" />
           </div>
           <div>
             <span className="font-black text-sm">Smart<span className="text-violet-400">Query</span></span>
-            <div className="text-[9px] text-slate-500 -mt-0.5">SQL Intelligence Platform</div>
+            <div className="text-[9px] text-slate-500 -mt-0.5">Query Intelligence Platform</div>
           </div>
         </Link>
 
@@ -214,6 +215,7 @@ export default function LandingPage() {
           {NAV_LINKS.map((l) => (
             <a key={l.href} href={l.href} className="text-xs text-slate-400 hover:text-violet-300 transition-colors">{l.label}</a>
           ))}
+          <a href="#why" className="text-xs text-slate-400 hover:text-violet-300 transition-colors">Why SmartQuery</a>
         </div>
 
         <div className="flex items-center gap-3">
@@ -240,14 +242,15 @@ export default function LandingPage() {
           <div className="absolute inset-0 bg-gradient-to-b from-violet-900/10 via-transparent to-transparent pointer-events-none" />
           <div className="absolute top-32 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-violet-600/10 blur-[120px] rounded-full pointer-events-none" />
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="relative">
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-violet-500/30 bg-violet-500/10 text-violet-300 text-xs font-medium mb-6">
-              <Sparkles className="w-3.5 h-3.5" />SQL performance at production scale
+            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-violet-500/30 bg-violet-500/10 text-violet-300 text-xs font-medium mb-6">
+              <Database className="w-3.5 h-3.5 text-violet-400" />
+              Query performance at production scale
             </div>
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black mb-4 leading-[1.1]">
               Smart Query<br /><span className="text-violet-400">Optimizer</span>
             </h1>
             <p className="text-slate-400 text-base sm:text-lg max-w-2xl mx-auto mb-4 leading-relaxed">
-              SQL Intelligence Platform · 9 Industry Domains
+              Query Intelligence Platform · 9 Industry Domains
             </p>
             <p className="text-slate-300 text-sm sm:text-base max-w-xl mx-auto mb-8 leading-relaxed">
               Paste broken SQL. Get production-grade rewrites with full analysis — anti-pattern detection,
@@ -313,6 +316,86 @@ WHERE p.created_at >= '2024-01-01'
 GROUP BY p.id, p.name
 ORDER BY revenue DESC LIMIT 100`}
               </pre>
+            </div>
+          </div>
+        </section>
+
+        {/* ─── Why SmartQuery? ─────────────────────────────────────────────── */}
+        <section id="why" className="px-6 lg:px-16 py-20 border-t border-violet-500/10">
+          <div className="max-w-5xl mx-auto">
+            <div className="text-center mb-12">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-violet-500/20 bg-violet-500/8 text-violet-300 text-[10px] font-bold uppercase tracking-wider mb-4">
+                <Sparkles className="w-3 h-3"/> Why SmartQuery
+              </div>
+              <h2 className="text-3xl font-black mb-3">Built for the Work Developers Actually Do</h2>
+              <p className="text-slate-400 text-sm max-w-xl mx-auto">
+                Real query optimization is hard — slow subqueries, missing indexes, brittle hand-written SQL.
+                SmartQuery handles the analysis so you can focus on the feature.
+              </p>
+            </div>
+
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {[
+                {
+                  icon: <Zap className="w-5 h-5 text-violet-400"/>,
+                  title: "Instant anti-pattern detection",
+                  body: "The Live Scanner flags N+1 subqueries, cartesian products, function-wrapped filter columns, and SELECT * the moment you paste — before you even click Optimize.",
+                  color: "violet",
+                },
+                {
+                  icon: <TrendingUp className="w-5 h-5 text-emerald-400"/>,
+                  title: "Complexity-reducing rewrites",
+                  body: "Common O(n²) query shapes — correlated subqueries, repeated aggregations — are rewritten to O(n log n) with JOIN-based alternatives. You see the before and after side by side.",
+                  color: "emerald",
+                },
+                {
+                  icon: <Shield className="w-5 h-5 text-sky-400"/>,
+                  title: "PII auto-redaction, always on",
+                  body: "Personally Identifiable Information — emails, SSNs, card numbers — is stripped from your SQL before any processing. Your data never leaves the redaction layer unmasked.",
+                  color: "sky",
+                },
+                {
+                  icon: <Code2 className="w-5 h-5 text-amber-400"/>,
+                  title: "Write SQL from plain English",
+                  body: "Describe what you need in a sentence. Load your DDL schema first and the generated SQL matches your real tables exactly — no hallucinated column names.",
+                  color: "amber",
+                },
+                {
+                  icon: <Play className="w-5 h-5 text-pink-400"/>,
+                  title: "Test queries without a database",
+                  body: "The Playground runs edited SQL live in-browser against seeded sample tables. Study advanced patterns — window functions, CTEs — without a local server or credentials.",
+                  color: "pink",
+                },
+                {
+                  icon: <BarChart3 className="w-5 h-5 text-rose-400"/>,
+                  title: "One platform, six tools",
+                  body: "Optimizer, NL to SQL, Schema Vault, Playground, Examples, and Analytics all share context — schema loads in Vault flow directly into NL to SQL, examples route straight into the Optimizer.",
+                  color: "rose",
+                },
+              ].map((card, i) => (
+                <motion.div key={card.title}
+                  initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }} transition={{ delay: i * 0.07 }}
+                  className="glass-card rounded-2xl p-5 border border-violet-500/10 flex flex-col gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-[#0a0a20] border border-violet-500/15 flex items-center justify-center flex-shrink-0">
+                    {card.icon}
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white mb-1">{card.title}</h3>
+                    <p className="text-[11.5px] text-slate-400 leading-relaxed">{card.body}</p>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+
+            <div className="mt-12 glass-card rounded-2xl border border-violet-500/15 p-6 text-center">
+              <p className="text-sm text-slate-300 max-w-2xl mx-auto leading-relaxed">
+                SmartQuery runs entirely through your own credentials — no shared API pool, no data retention, no ads. Your queries stay yours.
+              </p>
+              <Link href={authed ? "/optimizer" : "/register"}
+                className="inline-flex items-center gap-2 mt-5 px-6 py-2.5 bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold rounded-xl transition-all">
+                Start optimizing <ArrowRight className="w-4 h-4"/>
+              </Link>
             </div>
           </div>
         </section>

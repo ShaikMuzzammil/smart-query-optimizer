@@ -1,8 +1,10 @@
 "use client";
 // app/(dashboard)/examples/page.tsx — FIX #14: full, complete queries (not half-finished), copy options
+// FIX (this round): each example card now has an expand/collapse toggle so
+// long advanced queries don't dominate the page by default.
 import { useState } from "react";
-import { motion } from "framer-motion";
-import { BookOpen, Copy, Check, ChevronRight, Zap, Brain, Search } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { BookOpen, Copy, Check, ChevronRight, ChevronDown, ChevronUp, Zap, Brain, Search, Maximize2, Minimize2 } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 
@@ -546,10 +548,17 @@ ORDER BY account_id;`,
   ],
 };
 
+const COLLAPSE_LINE_THRESHOLD = 8;
+
 export default function ExamplesPage() {
   const [activeDomain, setActiveDomain] = useState<string>(Object.keys(EXAMPLES)[0]);
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
   const [search, setSearch] = useState("");
+  // FIX (this round): per-card expand/collapse toggle. Cards default to
+  // collapsed when the query is long (> COLLAPSE_LINE_THRESHOLD lines) so the
+  // page isn't dominated by a handful of advanced queries; short queries show
+  // in full by default. `overrides` records explicit user toggles.
+  const [overrides, setOverrides] = useState<Record<string, boolean>>({});
   const router = useRouter();
 
   const domains = Object.keys(EXAMPLES);
@@ -561,6 +570,27 @@ export default function ExamplesPage() {
            .map(e => ({ ...e, domain }))
       )
     : EXAMPLES[activeDomain].map(e => ({ ...e, domain: activeDomain }));
+
+  const keyFor = (ex: { domain: string; title: string }) => `${ex.domain}::${ex.title}`;
+  const defaultExpanded = (sql: string) => sql.split("\n").length <= COLLAPSE_LINE_THRESHOLD;
+  const isExpanded = (ex: { domain: string; title: string; sql: string }) => {
+    const k = keyFor(ex);
+    return k in overrides ? overrides[k] : defaultExpanded(ex.sql);
+  };
+  const toggleExpanded = (ex: { domain: string; title: string }, sql: string) => {
+    const k = keyFor(ex);
+    setOverrides(prev => ({ ...prev, [k]: !isExpanded({ ...ex, sql }) }));
+  };
+  const expandAll = () => {
+    const next: Record<string, boolean> = {};
+    filtered.forEach(ex => { next[keyFor(ex)] = true; });
+    setOverrides(prev => ({ ...prev, ...next }));
+  };
+  const collapseAll = () => {
+    const next: Record<string, boolean> = {};
+    filtered.forEach(ex => { next[keyFor(ex)] = false; });
+    setOverrides(prev => ({ ...prev, ...next }));
+  };
 
   const copy = (sql: string, idx: number) => {
     navigator.clipboard.writeText(sql).catch(()=>{});
@@ -585,10 +615,20 @@ export default function ExamplesPage() {
             Complete, production-ready SQL across {domains.length} industry domains — every query is fully written and ready to run
           </p>
         </div>
-        <div className="relative">
-          <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2"/>
-          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search examples…"
-            className="bg-[#08081a] border border-violet-500/20 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-300 placeholder-slate-600 outline-none focus:border-violet-500/40 w-56"/>
+        <div className="flex items-center gap-2">
+          <button onClick={expandAll}
+            className="flex items-center gap-1 text-[10px] text-slate-400 hover:text-violet-300 border border-violet-500/15 hover:border-violet-500/30 px-2.5 py-2 rounded-xl transition-colors">
+            <Maximize2 className="w-3 h-3"/> Expand All
+          </button>
+          <button onClick={collapseAll}
+            className="flex items-center gap-1 text-[10px] text-slate-400 hover:text-violet-300 border border-violet-500/15 hover:border-violet-500/30 px-2.5 py-2 rounded-xl transition-colors">
+            <Minimize2 className="w-3 h-3"/> Collapse All
+          </button>
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2"/>
+            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search examples…"
+              className="bg-[#08081a] border border-violet-500/20 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-300 placeholder-slate-600 outline-none focus:border-violet-500/40 w-56"/>
+          </div>
         </div>
       </div>
 
@@ -606,8 +646,13 @@ export default function ExamplesPage() {
       )}
 
       <div className="space-y-4">
-        {filtered.map((ex, i) => (
-          <motion.div key={i} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.03 }}
+        {filtered.map((ex, i) => {
+          const expanded = isExpanded(ex);
+          const lines = ex.sql.split("\n");
+          const isLong = lines.length > COLLAPSE_LINE_THRESHOLD;
+          const preview = lines.slice(0, COLLAPSE_LINE_THRESHOLD).join("\n");
+          return (
+          <motion.div key={keyFor(ex)} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.03 }}
             className="bg-[#08081a] rounded-2xl border border-violet-500/15 overflow-hidden">
             <div className="flex items-center justify-between px-5 py-3 border-b border-violet-500/10">
               <div>
@@ -624,6 +669,14 @@ export default function ExamplesPage() {
                 <p className="text-[11px] text-slate-500 mt-1">{ex.description}</p>
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
+                {/* FIX (this round): expand/close toggle for each example */}
+                {isLong && (
+                  <button onClick={() => toggleExpanded(ex, ex.sql)}
+                    className="flex items-center gap-1 text-[10px] text-slate-400 hover:text-violet-300 px-2 py-1.5 rounded-lg hover:bg-violet-500/10 transition-colors">
+                    {expanded ? <ChevronUp className="w-3 h-3"/> : <ChevronDown className="w-3 h-3"/>}
+                    {expanded ? "Collapse" : `Expand (${lines.length} lines)`}
+                  </button>
+                )}
                 <button onClick={() => copy(ex.sql, i)} className="flex items-center gap-1 text-[10px] text-slate-400 hover:text-violet-300 px-2 py-1.5 rounded-lg hover:bg-violet-500/10 transition-colors">
                   {copiedIdx === i ? <Check className="w-3 h-3 text-emerald-400"/> : <Copy className="w-3 h-3"/>}
                   {copiedIdx === i ? "Copied" : "Copy"}
@@ -633,9 +686,23 @@ export default function ExamplesPage() {
                 </button>
               </div>
             </div>
-            <pre className="px-5 py-4 text-[11.5px] font-mono text-slate-300 overflow-x-auto leading-7 bg-[#040410]">{ex.sql}</pre>
+            <AnimatePresence initial={false} mode="wait">
+              {expanded ? (
+                <motion.pre key="full" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                  className="px-5 py-4 text-[11.5px] font-mono text-slate-300 overflow-x-auto leading-7 bg-[#040410]">{ex.sql}</motion.pre>
+              ) : (
+                <motion.div key="preview" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                  <pre className="px-5 py-4 text-[11.5px] font-mono text-slate-300 overflow-x-auto leading-7 bg-[#040410]">{preview}</pre>
+                  <button onClick={() => toggleExpanded(ex, ex.sql)}
+                    className="w-full flex items-center justify-center gap-1.5 py-2 text-[10px] text-violet-400 hover:text-violet-300 bg-violet-500/5 hover:bg-violet-500/10 border-t border-violet-500/10 transition-colors">
+                    <ChevronDown className="w-3 h-3"/> Show {lines.length - COLLAPSE_LINE_THRESHOLD} more lines
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </motion.div>
-        ))}
+          );
+        })}
         {filtered.length === 0 && (
           <div className="text-center py-16 text-slate-500 text-sm">No examples match your search.</div>
         )}
